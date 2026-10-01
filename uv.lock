@@ -227,108 +227,6 @@ toml = [
 ]
 
 [[package]]
-name = "pycuf"
-version = "0.1.0"
-source = { editable = "." }
-
-[package.optional-dependencies]
-all = [
-    { name = "nanoarrow" },
-    { name = "pandas" },
-    { name = "polars" },
-    { name = "pyarrow" },
-    { name = "typer" },
-]
-arrow = [
-    { name = "nanoarrow" },
-]
-cli = [
-    { name = "typer" },
-]
-pandas = [
-    { name = "nanoarrow" },
-    { name = "pandas" },
-    { name = "pyarrow" },
-]
-parquet = [
-    { name = "nanoarrow" },
-    { name = "pyarrow" },
-]
-polars = [
-    { name = "nanoarrow" },
-    { name = "polars" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "duckdb" },
-    { name = "hypothesis" },
-    { name = "mypy" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-docs = [
-    { name = "mkdocstrings-python" },
-    { name = "zensical" },
-]
-lint = [
-    { name = "ruff" },
-]
-test = [
-    { name = "duckdb" },
-    { name = "hypothesis" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-]
-typing = [
-    { name = "mypy" },
-    { name = "pyright" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pycuf", extras = ["arrow", "polars", "pandas", "parquet", "cli"], marker = "extra == 'all'" },
-    { name = "nanoarrow", marker = "extra == 'arrow'", specifier = ">=0.7" },
-    { name = "nanoarrow", marker = "extra == 'pandas'", specifier = ">=0.7" },
-    { name = "nanoarrow", marker = "extra == 'parquet'", specifier = ">=0.7" },
-    { name = "nanoarrow", marker = "extra == 'polars'", specifier = ">=0.7" },
-    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.2" },
-    { name = "polars", marker = "extra == 'polars'", specifier = ">=1.44" },
-    { name = "pyarrow", marker = "extra == 'pandas'", specifier = ">=17" },
-    { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=17" },
-    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.16" },
-]
-provides-extras = ["arrow", "polars", "pandas", "parquet", "cli", "all"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "duckdb", specifier = ">=1.1" },
-    { name = "hypothesis", specifier = ">=6.130" },
-    { name = "mypy", specifier = ">=2" },
-    { name = "pyright", specifier = ">=1.1.400" },
-    { name = "pytest", specifier = ">=9" },
-    { name = "pytest-cov", specifier = ">=7" },
-    { name = "ruff", specifier = ">=0.16" },
-]
-docs = [
-    { name = "mkdocstrings-python", specifier = ">=2.0.9" },
-    { name = "zensical", specifier = ">=0.0.67" },
-]
-lint = [{ name = "ruff", specifier = ">=0.16" }]
-test = [
-    { name = "duckdb", specifier = ">=1.1" },
-    { name = "hypothesis", specifier = ">=6.130" },
-    { name = "pytest", specifier = ">=9" },
-    { name = "pytest-cov", specifier = ">=7" },
-]
-typing = [
-    { name = "mypy", specifier = ">=2" },
-    { name = "pyright", specifier = ">=1.1.400" },
-]
-
-[[package]]
 name = "deepmerge"
 version = "3.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1287,6 +1185,110 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/72/13/66e1402dcc860e1dc2760b1e0292c9a569b62b3bccab69def1b3e907d006/pyarrow-25.0.1-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:169d3429d5be7c752125890620f75a60776d38b0035eddae939651640822332e", size = 50040226, upload-time = "2026-08-10T12:40:35.186Z" },
     { url = "https://files.pythonhosted.org/packages/78/10/3f1a5497a7ef732ab0f03ecca3e66d89d9c0f57fdc61b4794c456b781f01/pyarrow-25.0.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:119297a6dc197e45d9c6d4415f7814a67ffa36c180d26f68c154c58067ae782d", size = 53149035, upload-time = "2026-08-10T12:40:41.454Z" },
     { url = "https://files.pythonhosted.org/packages/93/c0/37d4a7e8e2f7a6076283673d5298018ca26478b934c6ee369e10505ab32c/pyarrow-25.0.1-cp314-cp314t-win_amd64.whl", hash = "sha256:4288f27577352d608ca08553b0865e4a9b3aa14820c5d95b53337218d609835b", size = 28753071, upload-time = "2026-08-10T12:40:46.623Z" },
+]
+
+[[package]]
+name = "pycuf"
+version = "0.1.0"
+source = { editable = "." }
+
+[package.optional-dependencies]
+all = [
+    { name = "nanoarrow" },
+    { name = "pandas" },
+    { name = "polars" },
+    { name = "pyarrow" },
+    { name = "typer" },
+]
+arrow = [
+    { name = "nanoarrow" },
+]
+cli = [
+    { name = "typer" },
+]
+pandas = [
+    { name = "nanoarrow" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+]
+parquet = [
+    { name = "nanoarrow" },
+    { name = "pyarrow" },
+]
+polars = [
+    { name = "nanoarrow" },
+    { name = "polars" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "duckdb" },
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+docs = [
+    { name = "mkdocstrings-python" },
+    { name = "zensical" },
+]
+interop = [
+    { name = "duckdb" },
+]
+lint = [
+    { name = "ruff" },
+]
+test = [
+    { name = "hypothesis" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+typing = [
+    { name = "mypy" },
+    { name = "pyright" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nanoarrow", marker = "extra == 'arrow'", specifier = ">=0.7" },
+    { name = "nanoarrow", marker = "extra == 'pandas'", specifier = ">=0.7" },
+    { name = "nanoarrow", marker = "extra == 'parquet'", specifier = ">=0.7" },
+    { name = "nanoarrow", marker = "extra == 'polars'", specifier = ">=0.7" },
+    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.2" },
+    { name = "polars", marker = "extra == 'polars'", specifier = ">=1.44" },
+    { name = "pyarrow", marker = "extra == 'pandas'", specifier = ">=17" },
+    { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=17" },
+    { name = "pycuf", extras = ["arrow", "polars", "pandas", "parquet", "cli"], marker = "extra == 'all'" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.16" },
+]
+provides-extras = ["arrow", "polars", "pandas", "parquet", "cli", "all"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "duckdb", specifier = ">=1.1" },
+    { name = "hypothesis", specifier = ">=6.130" },
+    { name = "mypy", specifier = ">=2" },
+    { name = "pyright", specifier = ">=1.1.400" },
+    { name = "pytest", specifier = ">=9" },
+    { name = "pytest-cov", specifier = ">=7" },
+    { name = "ruff", specifier = ">=0.16" },
+]
+docs = [
+    { name = "mkdocstrings-python", specifier = ">=2.0.9" },
+    { name = "zensical", specifier = ">=0.0.67" },
+]
+interop = [{ name = "duckdb", specifier = ">=1.1" }]
+lint = [{ name = "ruff", specifier = ">=0.16" }]
+test = [
+    { name = "hypothesis", specifier = ">=6.130" },
+    { name = "pytest", specifier = ">=9" },
+    { name = "pytest-cov", specifier = ">=7" },
+]
+typing = [
+    { name = "mypy", specifier = ">=2" },
+    { name = "pyright", specifier = ">=1.1.400" },
 ]
 
 [[package]]

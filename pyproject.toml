@@ -61,11 +61,15 @@ all = ["pycuf[arrow,polars,pandas,parquet,cli]"]
 pycuf = "pycuf.__main__:main"
 
 [dependency-groups]
-test = ["pytest>=9", "pytest-cov>=7", "hypothesis>=6.130", "duckdb>=1.1"]
+test = ["pytest>=9", "pytest-cov>=7", "hypothesis>=6.130"]
+# DuckDB only checks that tables can be queried; it has no wheels for every Python CI tests
+# (free-threaded, pre-releases), so it stays out of the core test environment.
+interop = ["duckdb>=1.1"]
 typing = ["mypy>=2", "pyright>=1.1.400"]
 lint = ["ruff>=0.16"]
 dev = [
     { include-group = "test" },
+    { include-group = "interop" },
     { include-group = "typing" },
     { include-group = "lint" },
 ]

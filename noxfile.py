@@ -45,7 +45,7 @@ def typing(session: nox.Session) -> None:
 @nox.session
 def tests(session: nox.Session) -> None:
     """Run the test suite with all extras. Pass pytest options after ``--``."""
-    _sync(session, "--all-extras", "--group", "test")
+    _sync(session, "--all-extras", "--group", "test", "--group", "interop")
     session.run("pytest", *session.posargs)
 
 
