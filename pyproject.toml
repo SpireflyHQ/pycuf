@@ -1,6 +1,6 @@
 [project]
 name = "pycuf"
-version = "0.1.0"
+version = "0.1.0rc1"
 description = "Read, check and analyse CUF-XML construction cost estimates (Calculatie Uitwissel Formaat) in Python."
 readme = "README.md"
 authors = [{ name = "Ben van der Burgh", email = "ben@spirefly.com" }]
