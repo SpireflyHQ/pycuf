@@ -44,7 +44,7 @@ comes in two texts that disagree. pycuf was built for exactly these files.
 
 - **One typed model, in English.** `BEGROTINGSREGEL` becomes `Line`, `HOEVEELHEID` becomes
   `quantity`, `MAMO_REGEL` becomes `ResourceLine`. The raw layer keeps every element and
-  attribute exactly as written, vendor extensions included.
+  attribute as parsed, vendor extensions included.
 - **Lenient reading, honest reporting.** pycuf does not refuse a file because of bad data. Every
   problem becomes a graded finding with a stable code, such as `CUF5001 WARNING`, so nothing is
   silently guessed or dropped.
@@ -318,7 +318,7 @@ cuf = pycuf.read("old.xml", encoding="cp1252")
 # a bare "&" in SYSTEEMHUIS="Bakker & Spees", or stray control characters
 cuf = pycuf.read("export.xml", repair={"bare-ampersand", "control-chars"})
 
-# strict parsing: no decimal commas, no 3-5-2024 dates
+# strict parsing: no decimal commas, no 3-5-2024 dates, no true/false booleans
 cuf = pycuf.read("begroting.xml", lenient=())
 ```
 
@@ -329,7 +329,7 @@ Repairs are opt-in and every repair shows up as a finding, so you always know wh
 
 ```python
 line = ibis.lines[0]
-line.raw.get("BTW")  # '' – the attribute exactly as written
+line.raw.get("BTW")  # '' – the attribute's text, as parsed
 line.raw.line, line.raw.path  # where it sits in the file
 line.extra  # attributes that CUF-XML 4.003 does not define, such as vendor extensions
 ibis.raw.iter("MAMO_REGEL")  # walk the raw tree yourself

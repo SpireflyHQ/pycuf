@@ -13,8 +13,9 @@ the library:
 
 1. reads the whole input (path, bytes or stream) with a size limit;
 2. works out the encoding and transcodes what Expat cannot decode itself;
-3. parses the XML with a hardened `pyexpat` parser into a lossless raw tree, without namespace
-   processing (real files carry namespaces that are not valid URIs);
+3. parses the XML with a hardened `pyexpat` parser into a raw tree of every element and
+   attribute (parsed text, not bytes), without namespace processing (real files carry
+   namespaces that are not valid URIs);
 4. builds the English-named model from the raw tree, checking structure and values against the
    CUF-XML 4.003 catalogue and reporting every irregularity as a coded finding;
 5. computes costs on demand under a `Policy` and checks stated totals against them;
@@ -38,7 +39,7 @@ All library code lives in `src/pycuf/`. Modules starting with `_` are internal.
 - `_xml.py`: the hardened parser on top of `pyexpat`. It refuses DOCTYPE/ENTITY declarations,
   enforces depth and attribute-size limits, and builds `RawElement` trees with line numbers and
   paths.
-- `raw.py`: `RawElement`, the lossless record of an element exactly as written.
+- `raw.py`: `RawElement`, the record of an element and its attributes as parsed.
 - `spec.py`: the CUF-XML 4.003 catalogue: every element and attribute with type, cardinality,
   English field name and description. It drives the checks, the model mapping and the glossary.
 - `_build.py`: builds the model from raw elements, with the structure, value and sort-code checks.

@@ -6,6 +6,8 @@ Exit codes: 0 ok · 1 warnings (only with ``--strict``) · 2 errors · 3 tool fa
 from __future__ import annotations
 
 import json
+import platform
+import pyexpat
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -14,6 +16,7 @@ from typing import Annotated, Any
 import typer
 
 from . import __version__
+from ._encoding import REPAIRS, check_encoding_name
 from ._numeric import context, in_context
 from .errors import PycufError
 from .findings import CODES, Severity
@@ -26,20 +29,48 @@ app: typer.Typer = typer.Typer(
     help="Read, check and analyse CUF-XML construction cost estimates.",
     no_args_is_help=True,
     add_completion=False,
+    pretty_exceptions_show_locals=False,  # estimates hold client data; never print it
 )
 
 FilesArg = Annotated[list[Path], typer.Argument(exists=True, dir_okay=False, readable=True)]
 FileArg = Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)]
+
+
+def _check_encoding(value: str | None) -> str | None:
+    if value is not None:
+        try:
+            check_encoding_name(value)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+    return value
+
+
+def _check_repairs(value: list[str] | None) -> list[str] | None:
+    for name in value or ():
+        if name not in REPAIRS:
+            choices = ", ".join(sorted(REPAIRS))
+            raise typer.BadParameter(f"unknown repair {name!r}; choose from {choices}")
+    return value
+
+
 EncodingOpt = Annotated[
-    str | None, typer.Option("--encoding", help="Override the declared encoding.")
+    str | None,
+    typer.Option("--encoding", callback=_check_encoding, help="Override the declared encoding."),
 ]
 RepairOpt = Annotated[
     list[str] | None,
-    typer.Option("--repair", help="Opt-in repair: control-chars, bare-ampersand (repeatable)."),
+    typer.Option(
+        "--repair",
+        callback=_check_repairs,
+        help="Opt-in repair: control-chars, bare-ampersand (repeatable).",
+    ),
 ]
 StrictParsingOpt = Annotated[
     bool,
-    typer.Option("--strict-parsing", help="Do not accept decimal commas or d-m-yyyy dates."),
+    typer.Option(
+        "--strict-parsing",
+        help="Do not accept decimal commas, d-m-yyyy dates or true/false booleans.",
+    ),
 ]
 
 
@@ -82,11 +113,13 @@ def _fail_exc(path: Path, exc: Exception) -> typer.Exit:
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"pycuf {__version__}")
+        python = platform.python_version()
+        typer.echo(f"Python {python}, {pyexpat.EXPAT_VERSION.replace('_', ' ')}")
         raise typer.Exit
 
 
 def _lenient(strict: bool) -> tuple[str, ...]:
-    return () if strict else ("decimal-comma", "dmy-date")
+    return () if strict else ("decimal-comma", "dmy-date", "textual-boolean")
 
 
 def _num(value: Decimal | None) -> str | None:
@@ -137,7 +170,7 @@ def info(
         )
         totals = cuf.totals()
         report = cuf.validate()
-    except PycufError as exc:
+    except (PycufError, OSError) as exc:
         raise _fail_exc(file, exc) from None
     p = cuf.project
     data: dict[str, Any] = {
@@ -161,9 +194,9 @@ def info(
         "stated": {k: _num(v) for k, v in cuf.estimate.stated.items()},
         "contract_sum": _num(cuf.tail.contract_sum) if cuf.tail else None,
         "findings": {
-            "errors": len(report.errors),
-            "warnings": len(report.warnings),
-            "info": len(report.findings) - len(report.errors) - len(report.warnings),
+            "errors": report.severity_counts.get("ERROR", 0),
+            "warnings": report.severity_counts.get("WARNING", 0),
+            "info": report.severity_counts.get("INFO", 0),
         },
     }
     if output is OutputFormat.json:
@@ -193,7 +226,12 @@ def validate(
         bool, typer.Option("--strict", help="Exit with 1 when there are warnings.")
     ] = False,
     max_findings: Annotated[
-        int, typer.Option("--max-findings", help="Keep at most N findings per code.")
+        int,
+        typer.Option(
+            "--max-findings",
+            min=0,
+            help="List at most N findings per code (the exit code still counts them all).",
+        ),
     ] = 100,
     encoding: EncodingOpt = None,
     repair: RepairOpt = None,
@@ -212,7 +250,7 @@ def validate(
                 lenient=_lenient(strict_parsing),  # type: ignore[arg-type]
                 max_findings_per_code=max_findings,
             )
-        except PycufError as exc:
+        except (PycufError, OSError) as exc:
             raise _fail_exc(f, exc) from None
         reports.append(report)
         sev = report.max_severity
@@ -251,7 +289,7 @@ def totals(
             lenient=_lenient(strict_parsing),  # type: ignore[arg-type]
         )
         result = cuf.totals()
-    except PycufError as exc:
+    except (PycufError, OSError) as exc:
         raise _fail_exc(file, exc) from None
     shown = [b for b in cuf.bundles if depth <= 0 or b.depth <= depth]
     if output is OutputFormat.json:
@@ -321,7 +359,7 @@ def _bundle_row(b: Bundle, costs: Costs) -> str:
 @app.command()
 def export(
     file: FileArg,
-    out: Annotated[Path, typer.Option("--out", "-o", help="Output directory.")],
+    out: Annotated[Path, typer.Option("--out", "-o", file_okay=False, help="Output directory.")],
     fmt: Annotated[ExportFormat, typer.Option("--format", "-f")] = ExportFormat.csv,
     tables: Annotated[
         list[str] | None, typer.Option("--table", "-t", help="Table to export (repeatable).")
@@ -339,7 +377,7 @@ def export(
             lenient=_lenient(strict_parsing),  # type: ignore[arg-type]
         )
         paths = cuf.export(out, format=fmt.value, tables=tables)
-    except (PycufError, KeyError, ImportError, ValueError) as exc:
+    except (PycufError, OSError, KeyError, ImportError, ValueError) as exc:
         raise _fail_exc(file, exc) from None
     for p in paths:
         typer.echo(p)

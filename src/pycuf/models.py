@@ -1,7 +1,7 @@
 """The typed, English-named data model of a CUF file.
 
 All classes are frozen, slotted, keyword-only dataclasses. Every object keeps the
-:class:`~pycuf.raw.RawElement` it was built from in ``raw`` (the exact text of every attribute),
+:class:`~pycuf.raw.RawElement` it was built from in ``raw`` (the parsed text of every attribute),
 and ``extra`` exposes attributes that CUF-XML 4.003 does not define (vendor extensions). The Dutch
 name of every attribute is listed in the glossary of the documentation and in
 :data:`pycuf.spec.ELEMENTS`.

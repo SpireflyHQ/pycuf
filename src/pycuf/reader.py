@@ -14,12 +14,11 @@ from ._encoding import (
     EncodingInfo,
     check_encoding_name,
     prepare,
-    repair_bytes,
     sniff_encoding,
 )
 from ._source import DEFAULT_MAX_SIZE, SourceLike, read_source
 from .calc import Totals, compute
-from .errors import NotCufError
+from .errors import NotCufError, XmlSyntaxError
 from .findings import CODES, Finding, FindingCollector, Severity
 from .models import (
     Bundle,
@@ -40,10 +39,10 @@ if TYPE_CHECKING:
 
 __all__ = ["CufFile", "Leniency", "read"]
 
-Leniency = Literal["decimal-comma", "dmy-date"]
+Leniency = Literal["decimal-comma", "dmy-date", "textual-boolean"]
 """Deviations from CUF-XML that :func:`read` accepts (each acceptance is reported):
 ``"decimal-comma"`` reads ``12,5`` as 12.5 (``CUF7003``); ``"dmy-date"`` reads ``d-m-yyyy``
-dates (``CUF7002``)."""
+dates (``CUF7002``); ``"textual-boolean"`` reads ``true``/``false`` as 1/0 (``CUF7004``)."""
 LENIENCIES: frozenset[str] = frozenset(get_args(Leniency))
 
 
@@ -64,7 +63,7 @@ class CufFile:
         encoding: How the bytes were decoded.
         namespace: The default namespace as written (``x-schema:CufSchema.xml`` …), if any.
         namespaces: All namespace declarations of the root element (prefix → URI).
-        raw: The root :class:`~pycuf.raw.RawElement`: the file exactly as written.
+        raw: The root :class:`~pycuf.raw.RawElement`: every element and attribute, as parsed.
         bundles: All bundles in document order (``bundles[b.seq] is b``).
         lines: All estimate lines in document order (``lines[ln.seq] is ln``).
         resource_lines: All resource (MAMO) lines in document order.
@@ -87,6 +86,7 @@ class CufFile:
             findings,
             decimal_comma="decimal-comma" in lenient,
             dutch_dates="dmy-date" in lenient,
+            textual_booleans="textual-boolean" in lenient,
         )
         self.name: str = name
         self.raw: RawElement = root
@@ -263,7 +263,7 @@ def read(
     source: SourceLike,
     *,
     policy: Policy | PresetName = DEFAULT,
-    lenient: Iterable[Leniency] = ("decimal-comma", "dmy-date"),
+    lenient: Iterable[Leniency] = ("decimal-comma", "dmy-date", "textual-boolean"),
     encoding: str | None = None,
     repair: Iterable[str] = (),
     severity_overrides: Mapping[str, Severity | None] | None = None,
@@ -284,7 +284,8 @@ def read(
         policy: The file's default calculation policy, a :class:`~pycuf.policy.Policy` or a
             preset name (``"usage-rules"``, ``"schema"``, ``"erp"``).
         lenient: Deviations to accept, each reported as a finding: ``"decimal-comma"``
-            (``12,5``) and ``"dmy-date"`` (``d-m-yyyy``). Pass ``()`` for strict parsing; values
+            (``12,5``), ``"dmy-date"`` (``d-m-yyyy``) and ``"textual-boolean"`` (``true``/``false``
+            for 1/0). Pass ``()`` for strict parsing; values
             that cannot be read are then reported as invalid.
         encoding: Override the declared encoding (e.g. ``"cp1252"`` for a file that has none).
         repair: Opt-in fix-ups of malformed XML, each reported as a finding:
@@ -318,6 +319,13 @@ def read(
         raise ValueError(
             f"unknown repair(s) {sorted(unknown_repairs)}; choose from {sorted(REPAIRS)}"
         )
+    for option, limit in (
+        ("max_findings_per_code", max_findings_per_code),
+        ("max_findings", max_findings),
+        ("max_size", max_size),
+    ):
+        if limit is not None and limit < 0:
+            raise ValueError(f"{option} must be >= 0 or None, got {limit}")
     if encoding is not None:
         check_encoding_name(encoding)
     findings = FindingCollector(
@@ -335,9 +343,7 @@ def read(
         findings.add("CUF1002", "no XML declaration; the encoding is assumed to be UTF-8")
     if encoding is not None:
         findings.add("CUF1004", f"encoding overridden: read as {info.effective}", value=encoding)
-    if repairs:
-        data = repair_bytes(data, repairs, findings)
-    data, expat_encoding = prepare(data, info, findings)
+    data, expat_encoding = prepare(data, info, findings, repairs)
     parsed = _xml.parse_xml(
         data,
         encoding=expat_encoding,
@@ -377,11 +383,20 @@ def check_overrides(
     return result
 
 
+# Byte-order marks, and how "<" starts in UTF-16 and UTF-32 without one (XML 1.0 Appendix F)
+_XML_STARTS = (b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff", b"\x00<", b"\x00\x00\x00<")
+_UCS4_UNUSUAL = (b"\x00\x00<\x00", b"\x00<\x00\x00", b"\x00\x00\xff\xfe", b"\xfe\xff\x00\x00")
+
+
 def _check_xml_like(name: str, data: bytes) -> None:
     head = data[:64].lstrip(b"\xef\xbb\xbf \t\r\n")
     if not head:
         raise NotCufError(f"{name}: the input is empty")
-    if head[:1] != b"<" and not head.startswith((b"\xff\xfe", b"\xfe\xff", b"\x00<", b"<\x00")):
+    if head.startswith(_UCS4_UNUSUAL):
+        raise XmlSyntaxError(
+            f"{name}: UCS-4 in the unusual byte order 2143 or 3412 is not supported", line=1
+        )
+    if head[:1] != b"<" and not head.startswith(_XML_STARTS):
         raise NotCufError(
             f"{name}: not XML. CUF-XML files start with '<'; the pre-XML CUF 3.000 and older "
             "formats are not supported"

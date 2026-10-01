@@ -16,7 +16,7 @@ Every problem pycuf notices is a finding with a stable code. Codes are never ren
 | `CUF1006` | WARNING | Bytes undefined in the encoding kept as Latin-1 characters |
 | `CUF1010` | WARNING | Repair: XML-illegal control characters removed |
 | `CUF1012` | WARNING | Repair: bare ampersands escaped |
-| `CUF1013` | WARNING | Data after the end of the document ignored |
+| `CUF1013` | WARNING | NUL or Ctrl-Z padding after the end of the document ignored |
 
 ## CUF2xxx: XML well-formedness and security
 
@@ -76,5 +76,6 @@ Every problem pycuf notices is a finding with a stable code. Codes are never ren
 | `CUF7001` | INFO | Negative quantity or price |
 | `CUF7002` | WARNING | Non-ISO date accepted |
 | `CUF7003` | WARNING | Decimal comma accepted |
+| `CUF7004` | WARNING | Boolean written as true/false accepted |
 | `CUF7005` | INFO | Element estimate: bundles with DOORREKEN_HOEVEELHEID |
 | `CUF7006` | INFO | Factor 0 interpreted as 1 |

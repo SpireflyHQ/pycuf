@@ -15,9 +15,10 @@ the install hint and exits with code 3. `python -m pycuf` works the same way.
 | `pycuf export FILE -o DIR` | export the normalized tables to a directory |
 | `pycuf codes` | list all finding codes with their default severity |
 
-`pycuf --version` prints the version; every command has `--help`. The commands that compute take
-`--policy usage-rules|schema|erp`; all reading commands take `--encoding` and `--strict-parsing`
-(no decimal commas or d-m-yyyy dates).
+`pycuf --version` prints the version, and on a second line the Python and Expat versions; every
+command has `--help`. The commands that compute take `--policy usage-rules|schema|erp`; all
+reading commands take `--encoding` and `--strict-parsing` (no decimal commas, d-m-yyyy dates or
+true/false booleans).
 
 ## `pycuf info`
 
@@ -81,7 +82,7 @@ examples/begroting-ibis.xml: 0 error(s), 11 warning(s), 1 info
 | Option | Meaning |
 |---|---|
 | `--strict` | exit with 1 when there are warnings |
-| `--max-findings N` | keep at most N findings per code |
+| `--max-findings N` | list at most N findings per code (the verdict and exit code still count them all) |
 | `--repair NAME` | opt-in repair: `control-chars`, `bare-ampersand` (repeatable) |
 | `--output text\|json` | output format |
 

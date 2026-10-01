@@ -66,3 +66,27 @@ def test_agrees() -> None:
         Decimal("125.95"), Decimal("125.945")
     )
     assert Policy(rel_tol=Decimal("0.01")).agrees(Decimal(1000), Decimal(1009))
+
+
+@pytest.mark.parametrize(
+    ("stated", "computed", "agrees"),
+    [
+        ("100.00", "100.004", True),  # two decimals: rounded to cents
+        ("100.00", "100.005", False),  # half up: 100.01
+        ("-100.00", "-100.005", False),  # half up is away from zero: -100.01
+        ("100.0", "100.04", True),  # one decimal
+        ("100.0", "100.05", False),
+        ("100", "100.000", True),  # no decimals: compared as written
+        ("100", "100.4", False),  # not rounded to whole units
+        ("1E+2", "100.4", False),
+        ("1E+2", "100", True),
+    ],
+)
+def test_rounding_to_stated_decimals(stated: str, computed: str, agrees: bool) -> None:
+    exact = Policy(abs_tol=Decimal(0))
+    assert exact.agrees(Decimal(stated), Decimal(computed)) is agrees
+
+
+def test_integer_stated_values_use_the_tolerance() -> None:
+    assert Policy().agrees(Decimal("100"), Decimal("100.004"))
+    assert not Policy().agrees(Decimal("100"), Decimal("100.4"))

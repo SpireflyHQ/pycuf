@@ -10,7 +10,7 @@ CUF-XML 4.003 uses the Microsoft XDR data types. The parsers follow their defini
   ``0e-1000000000000`` cannot make later calculations or exports enormous.
 - ``date``: ``YYYY-MM-DD``. ``dateTime``: ``YYYY-MM-DD`` with an optional ``Thh:mm:ss[.fff…]``
   and no time zone.
-- ``boolean``: ``0`` or ``1``.
+- ``boolean``: ``0`` or ``1`` (``true``/``false``, the XML Schema spellings, are opt-in).
 
 Each parser returns ``None`` when a value cannot be interpreted exactly; the caller reports a
 finding and keeps the raw text. Lenient variants (decimal comma, Dutch ``d-m-yyyy`` dates) are
@@ -162,14 +162,23 @@ def parse_datetime(text: str, *, dutch: bool = False) -> tuple[dt.datetime | Non
     return None, False
 
 
-def parse_bool(text: str) -> bool | None:
-    """Parse an XDR ``boolean`` (``0``/``1``; ``true``/``false`` are accepted as well)."""
-    s = text.strip().lower()
-    if s in ("1", "true"):
-        return True
-    if s in ("0", "false"):
-        return False
-    return None
+def parse_bool(text: str, *, textual: bool = False) -> tuple[bool | None, bool]:
+    """Parse an XDR ``boolean`` (``0`` or ``1``).
+
+    Args:
+        text: The attribute value.
+        textual: Also accept ``true`` and ``false`` (exactly so, as XML Schema writes them),
+            which XDR does not allow but some exporters write.
+
+    Returns:
+        ``(flag, used_text)``; ``flag`` is ``None`` when the text is not a valid boolean.
+    """
+    s = text.strip()
+    if s in ("0", "1"):
+        return s == "1", False
+    if textual and s in ("true", "false"):
+        return s == "true", True
+    return None, False
 
 
 def _date(year: str, month: str, day: str) -> dt.date | None:

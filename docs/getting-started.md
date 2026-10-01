@@ -129,6 +129,12 @@ computed costs. With `pycuf[polars]` installed, `cuf.to_polars()` gives the same
 DataFrames, and with `pycuf[arrow]` DuckDB can query them directly; see
 [Interoperability](guide/interop.md).
 
+!!! warning "Files from other parties"
+    The CSV files contain the texts of the CUF file exactly. A spreadsheet may run a cell that
+    starts with `=`, `+`, `-` or `@` as a formula, and quoting does not prevent that. Open exports
+    of files you did not make yourself with formula evaluation off, or import them as text; see
+    [CSV and spreadsheets](guide/interop.md#csv-and-spreadsheets).
+
 ## What next
 
 - [Reading CUF files](guide/reading.md): the data model, the raw layer, encodings and lenient

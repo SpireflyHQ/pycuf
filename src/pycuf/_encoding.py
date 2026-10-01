@@ -1,4 +1,4 @@
-"""Character-encoding detection, transcoding for Expat, and opt-in byte-level repairs."""
+"""Character-encoding detection, transcoding for Expat, and opt-in character-level repairs."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from .errors import XmlSyntaxError
 from .findings import FindingCollector
 
 __all__ = [
@@ -15,7 +16,7 @@ __all__ = [
     "Repair",
     "check_encoding_name",
     "prepare",
-    "repair_bytes",
+    "repair_text",
     "sniff_encoding",
 ]
 
@@ -33,8 +34,8 @@ _BOMS: tuple[tuple[bytes, str], ...] = (
 _DECL = re.compile(rb"^\s*<\?xml\b[^>]*?\bencoding\s*=\s*([\"'])([A-Za-z][A-Za-z0-9._-]*)\1")
 _HAS_DECL = re.compile(rb"^\s*<\?xml\b")
 # XML 1.0 forbids C0 controls except TAB, LF, CR
-_CONTROL = bytes([*range(9), 11, 12, *range(14, 32)])
-_BARE_AMP = re.compile(rb"&(?!(?:[A-Za-z_:][A-Za-z0-9._:-]*|#[0-9]+|#x[0-9A-Fa-f]+);)")
+_CONTROL = dict.fromkeys([*range(9), 11, 12, *range(14, 32)])
+_BARE_AMP = re.compile(r"&(?!(?:[A-Za-z_:][A-Za-z0-9._:-]*|#[0-9]+|#x[0-9A-Fa-f]+);)")
 #: Encodings Expat decodes itself (Python codec names).
 _EXPAT_NATIVE = frozenset({"utf-8", "utf-16", "utf-16-le", "utf-16-be", "iso8859-1", "ascii"})
 _SURROGATE = re.compile("[\udc80-\udcff]")
@@ -83,6 +84,12 @@ def sniff_encoding(head: bytes, override: str | None = None) -> EncodingInfo:
         body = head[len(mark) :]
         if not bom.startswith("utf-8"):
             body = body[:4096].decode(bom, errors="ignore").encode("ascii", errors="ignore")
+    elif head[:4] in (b"\x00\x00\x00<", b"<\x00\x00\x00"):  # UTF-32 without a BOM
+        enc = "utf-32-be" if head[0] == 0 else "utf-32-le"
+        text = head[:4096].decode(enc, errors="ignore").encode("ascii", errors="ignore")
+        m = _DECL.match(text)
+        effective = _canonical(override) if override else enc
+        return EncodingInfo(None, m.group(2).decode() if m else None, True, effective, override)
     elif head[:4] in (b"<\x00?\x00", b"\x00<\x00?"):
         enc = "utf-16-le" if head[0] == 0x3C else "utf-16-be"
         text = head[:4096].decode(enc, errors="ignore").encode("ascii", errors="ignore")
@@ -103,44 +110,64 @@ def sniff_encoding(head: bytes, override: str | None = None) -> EncodingInfo:
     return EncodingInfo(bom, declared, has_decl, effective, override)
 
 
-def repair_bytes(data: bytes, repairs: frozenset[str], findings: FindingCollector) -> bytes:
-    """Apply opt-in repairs (ASCII-compatible encodings only) and report each one."""
+def repair_text(text: str, repairs: frozenset[str], findings: FindingCollector) -> str:
+    """Apply opt-in repairs to decoded text and report each one.
+
+    Repairs work on characters, never on bytes: in UTF-16, UTF-32 or ISO-2022-JP the bytes of
+    ``&`` or of a control character also occur inside other characters.
+    """
     if "control-chars" in repairs:
-        cleaned = data.translate(None, _CONTROL)
-        if removed := len(data) - len(cleaned):
+        cleaned = text.translate(_CONTROL)
+        if removed := len(text) - len(cleaned):
             findings.add("CUF1010", f"removed {removed:,} XML-illegal control character(s)")
-        data = cleaned
+        text = cleaned
     if "bare-ampersand" in repairs:
-        data, escaped = _BARE_AMP.subn(b"&amp;", data)
+        text, escaped = _BARE_AMP.subn("&amp;", text)
         if escaped:
             findings.add("CUF1012", f"escaped {escaped:,} bare '&' character(s) as '&amp;'")
-    return data
+    return text
 
 
 def prepare(
-    data: bytes, info: EncodingInfo, findings: FindingCollector
+    data: bytes,
+    info: EncodingInfo,
+    findings: FindingCollector,
+    repairs: frozenset[str] = frozenset(),
 ) -> tuple[bytes, str | None]:
-    """Return ``(bytes_for_expat, expat_encoding)``.
+    """Return ``(bytes_for_expat, expat_encoding)``, applying ``repairs`` to the decoded text.
 
-    Encodings Expat supports natively are passed through unchanged. Everything else Python knows
-    (windows-1252, UTF-32, …) is transcoded to UTF-8 here, and Expat is told to read UTF-8. Bytes
-    the codec does not define (such as 0x81 in windows-1252) are kept as the code point of the same
-    value, as ISO-8859-1 would, and reported once.
+    Without repairs, encodings Expat supports natively are passed through unchanged. Everything
+    else Python knows (windows-1252, UTF-32, …), and any input to repair, is decoded here and
+    handed to Expat as UTF-8. Bytes a transcoded codec does not define (such as 0x81 in
+    windows-1252) are kept as the code point of the same value, as ISO-8859-1 would, and reported
+    once; bytes that are invalid in a native encoding stay invalid, so Expat reports them.
+
+    Raises:
+        XmlSyntaxError: The input is not valid in its encoding (e.g. truncated UTF-32).
     """
     effective = info.effective
-    if info.override is None and effective in _EXPAT_NATIVE:
+    if not repairs and info.override is None and effective in _EXPAT_NATIVE:
         return data, None
-    if effective in _EXPAT_NATIVE:
+    if not repairs and effective in _EXPAT_NATIVE:
         return data, effective
     try:
         codec = codecs.lookup(effective).name
     except LookupError:
-        return data, "utf-8"
-    if codec in _EXPAT_NATIVE:
+        codec = "utf-8"
+    if not repairs and codec in _EXPAT_NATIVE:
         return data, codec
-    text = data.decode(codec, errors="surrogateescape")
-    if info.bom is not None and text.startswith("﻿"):
+    try:
+        text = data.decode(codec, errors="surrogateescape")
+    except UnicodeDecodeError as exc:
+        raise XmlSyntaxError(
+            f"the input is not valid {codec}: {exc.reason} at byte {exc.start:,}"
+        ) from None
+    if text.startswith("\ufeff"):
         text = text[1:]
+    if repairs:
+        text = repair_text(text, repairs, findings)
+    if codec in _EXPAT_NATIVE:  # invalid bytes go back as they were, for Expat to report
+        return text.encode("utf-8", errors="surrogateescape"), "utf-8"
     if _SURROGATE.search(text):
         undefined = len(_SURROGATE.findall(text))
         findings.add(

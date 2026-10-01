@@ -21,14 +21,14 @@ import json
 import os
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from . import _xml
 from ._source import DEFAULT_MAX_SIZE, SourceLike
 from .calc import check_totals
 from .errors import ForbiddenConstructError, LimitExceededError, XmlSyntaxError
-from .findings import Finding, FindingCollector, Severity
+from .findings import CODES, Finding, FindingCollector, Severity
 from .policy import DEFAULT, Policy, PresetName, resolve_policy
 
 if TYPE_CHECKING:
@@ -49,6 +49,9 @@ class ValidationReport:
         findings: Findings, most severe first, then in file order.
         counts: Occurrences per code, including findings suppressed by limits.
         suppressed: Number of findings dropped because of limits.
+        severity_counts: Occurrences per severity name (``"ERROR"`` …), including findings
+            suppressed by limits; :attr:`ok` and :attr:`max_severity` are based on these, so
+            the limits only shorten the list, never change the verdict.
         policy: The calculation policy used (``None`` when the file could not be read).
         estimate_style: The resolved estimate style (``None`` when not computed).
         stats: Counts of what the file contains.
@@ -61,6 +64,7 @@ class ValidationReport:
     policy: Policy | None
     estimate_style: Literal["traditional", "element"] | None
     stats: Mapping[str, int]
+    severity_counts: Mapping[str, int] = field(default_factory=dict)
 
     @property
     def errors(self) -> tuple[Finding, ...]:
@@ -74,13 +78,14 @@ class ValidationReport:
 
     @property
     def ok(self) -> bool:
-        """``True`` when there are no ERROR findings."""
-        return not self.errors
+        """``True`` when there are no ERROR findings, including those suppressed by limits."""
+        return not self.errors and not self.severity_counts.get(Severity.ERROR.name)
 
     @property
     def max_severity(self) -> Severity | None:
-        """Highest severity among the findings."""
-        return max((f.severity for f in self.findings), default=None)
+        """Highest severity among the findings, including those suppressed by limits."""
+        counted = (Severity[name] for name, n in self.severity_counts.items() if n)
+        return max((*(f.severity for f in self.findings), *counted), default=None)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serialisable dictionary (layout versioned by ``schema_version``)."""
@@ -105,6 +110,7 @@ class ValidationReport:
             "estimate_style": self.estimate_style,
             "stats": dict(self.stats),
             "counts": dict(self.counts),
+            "severity_counts": dict(self.severity_counts),
             "suppressed": self.suppressed,
             "findings": [f.to_dict() for f in self.findings],
         }
@@ -115,11 +121,26 @@ class ValidationReport:
         return json.dumps(self.to_dict(), **kwargs)
 
     def __str__(self) -> str:
+        n = {s: self.severity_counts.get(s.name, 0) for s in Severity}
         head = (
-            f"{self.name}: {len(self.errors)} error(s), {len(self.warnings)} warning(s), "
-            f"{len(self.findings) - len(self.errors) - len(self.warnings)} info"
+            f"{self.name}: {n[Severity.ERROR]} error(s), {n[Severity.WARNING]} warning(s), "
+            f"{n[Severity.INFO]} info"
         )
+        if self.suppressed:
+            head += f" ({self.suppressed:,} not listed because of the limits)"
         return "\n".join([head, *(f"  {f}" for f in self.findings)])
+
+
+def _severity_counts(
+    counts: Mapping[str, int], overrides: Mapping[str, Severity | None]
+) -> dict[str, int]:
+    """Occurrences per severity name; a code's severity is its override or its default."""
+    result = {s.name: 0 for s in sorted(Severity, reverse=True)}
+    for code, n in counts.items():
+        sev = overrides[code] if code in overrides else CODES[code].severity
+        if sev is not None:
+            result[sev.name] += n
+    return result
 
 
 def _sorted(findings: Iterable[Finding]) -> tuple[Finding, ...]:
@@ -140,10 +161,9 @@ def validate_file(
     overrides = check_overrides(severity_overrides)
     totals = cuf.totals(policy=policy)
     read = cuf._collector
+    merged = {**read.overrides, **overrides}
     collector = FindingCollector(
-        max_per_code=read.max_per_code,
-        max_total=read.max_total,
-        overrides={**read.overrides, **overrides},
+        max_per_code=read.max_per_code, max_total=read.max_total, overrides=merged
     )
     collector.extend(cuf.findings)
     collector.extend(totals.findings)
@@ -155,6 +175,7 @@ def validate_file(
         name=cuf.name,
         findings=_sorted(collector),
         counts=dict(counts),
+        severity_counts=_severity_counts(counts, merged),
         suppressed=read.suppressed + collector.suppressed,
         policy=totals.policy,
         estimate_style=totals.estimate_style,
@@ -172,7 +193,7 @@ def validate(
     source: SourceLike,
     *,
     policy: Policy | PresetName = DEFAULT,
-    lenient: Iterable[Leniency] = ("decimal-comma", "dmy-date"),
+    lenient: Iterable[Leniency] = ("decimal-comma", "dmy-date", "textual-boolean"),
     encoding: str | None = None,
     repair: Iterable[str] = (),
     severity_overrides: Mapping[str, Severity | None] | None = None,
@@ -226,7 +247,8 @@ def validate(
             if isinstance(exc, LimitExceededError)
             else "CUF2001"
         )
-        fc = FindingCollector(overrides=check_overrides(severity_overrides))
+        fatal_overrides = check_overrides(severity_overrides)
+        fc = FindingCollector(overrides=fatal_overrides)
         fc.add(
             code,
             str(exc),
@@ -241,6 +263,7 @@ def validate(
             name=str(name),
             findings=_sorted(fc),
             counts=fc.counts,
+            severity_counts=_severity_counts(fc.counts, fatal_overrides),
             suppressed=0,
             policy=resolved,
             estimate_style=None,

@@ -65,7 +65,7 @@ CODES: Mapping[str, CodeInfo] = {
         _c("CUF1006", _W, "Bytes undefined in the encoding kept as Latin-1 characters"),
         _c("CUF1010", _W, "Repair: XML-illegal control characters removed"),
         _c("CUF1012", _W, "Repair: bare ampersands escaped"),
-        _c("CUF1013", _W, "Data after the end of the document ignored"),
+        _c("CUF1013", _W, "NUL or Ctrl-Z padding after the end of the document ignored"),
         # 2xxx XML & security
         _c("CUF2001", _E, "XML is not well-formed"),
         _c("CUF2002", _E, "Forbidden construct (DOCTYPE/ENTITY)"),
@@ -105,6 +105,7 @@ CODES: Mapping[str, CodeInfo] = {
         _c("CUF7001", _I, "Negative quantity or price"),
         _c("CUF7002", _W, "Non-ISO date accepted"),
         _c("CUF7003", _W, "Decimal comma accepted"),
+        _c("CUF7004", _W, "Boolean written as true/false accepted"),
         _c("CUF7005", _I, "Element estimate: bundles with DOORREKEN_HOEVEELHEID"),
         _c("CUF7006", _I, "Factor 0 interpreted as 1"),
     )

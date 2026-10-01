@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import cufgen
@@ -62,3 +64,31 @@ def test_failures_and_codes(tmp_path: Path) -> None:
     assert "CUF5001" in runner.invoke(app, ["codes"]).output
     assert json.loads(runner.invoke(app, ["codes", "--output", "json"]).output)[0]["code"]
     assert "pycuf" in runner.invoke(app, ["--version"]).output
+
+
+def _main(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run the real entry point (``python -m pycuf``), as scripts and CI do."""
+    return subprocess.run(
+        [sys.executable, "-m", "pycuf", *args], capture_output=True, text=True, check=False
+    )
+
+
+def test_entry_point_exit_codes(files: dict[str, Path], tmp_path: Path) -> None:
+    assert _main("validate", str(files["ok"])).returncode == 0
+    assert _main("validate", str(files["bad"])).returncode == 2
+    (tmp_path / "invalid.xml").write_bytes(b"<CUF/>")
+    assert _main("validate", str(tmp_path / "invalid.xml"), "--max-findings", "0").returncode == 2
+    a_file = tmp_path / "a-file"
+    a_file.write_text("")
+    for args in [
+        ("info", str(files["ok"]), "--encoding", "klingon"),
+        ("totals", str(files["ok"]), "--encoding", "klingon"),
+        ("info", str(files["ok"]), "--repair", "bogus"),
+        ("validate", str(files["ok"]), "--max-findings", "-1"),
+        ("export", str(files["ok"]), "-o", str(a_file)),
+        ("export", str(files["ok"])),
+        ("info", str(tmp_path / "missing.xml")),
+    ]:
+        result = _main(*args)
+        assert result.returncode == 3, args
+        assert "Traceback" not in result.stderr, args

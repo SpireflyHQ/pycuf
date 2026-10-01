@@ -19,6 +19,7 @@ privately, never in a public issue.
 | Huge or tiny numbers (`0e-1000000000000` is 17 characters, but a trillion digits in plain notation) | numbers outside the [range pycuf reads](guide/reading.md#numbers) are `CUF3018` and `None`; computations run in pycuf's own decimal context; Arrow export checks digits before building integers; CSV and JSONL refuse a computed number longer than 2,000 characters |
 | Huge files | `max_size` (default 256 MiB; real CUF files are rarely larger than a few MB) |
 | Millions of findings | `max_findings_per_code` and `max_findings` |
+| Formulas in exported CSV (a description `=HYPERLINK(…)` opened in a spreadsheet) | texts are exported exactly, by design; the [interoperability guide](guide/interop.md#csv-and-spreadsheets) explains how to open files from other parties safely |
 | Silent data corruption | no parser "recover" mode; malformed XML is an error with a position; repairs are opt-in and reported |
 
 pycuf only reads the paths and streams you pass in, never opens network connections, and never
@@ -27,7 +28,10 @@ writes anything except the export files you request.
 Python can be linked against a system Expat. Expat versions before 2.7.2 have known
 denial-of-service weaknesses (see the
 [Python XML security notes](https://docs.python.org/3/library/xml.html#xml-security)); keep your
-Python and Expat up to date. pycuf's refusal of DTDs does not depend on the Expat version.
+Python and Expat up to date. `pycuf --version` (or `pyexpat.EXPAT_VERSION`) shows which Expat
+you have. pycuf's refusal of DTDs does not depend on the Expat version, and the default
+`max_depth` of 64 stops the deep nesting that drives the memory weakness fixed in Expat 2.7.2
+(CVE-2025-59375): keep it small when your Expat is older.
 
 ## DOCTYPE and ENTITY declarations are refused
 

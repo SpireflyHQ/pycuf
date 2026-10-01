@@ -1,9 +1,12 @@
-"""Lossless raw elements: exactly what the file contains.
+"""Raw elements: every element and attribute of the file, as the XML parser reports them.
 
-The raw layer keeps every element and attribute as written, including elements and attributes
-that CUF-XML 4.003 does not define (vendor extensions such as ``Ibis:AANDUIDING`` or Bakker &
-Spees' ``WERKBESCHRIJVING``). The typed model (:mod:`pycuf.models`) is built from it, and every
-model object keeps a reference to its :class:`RawElement` in ``raw``.
+The raw layer keeps every element and attribute, including elements and attributes that CUF-XML
+4.003 does not define (vendor extensions such as ``Ibis:AANDUIDING`` or Bakker & Spees'
+``WERKBESCHRIJVING``). Values are the parsed text, not the bytes: entity and character
+references are resolved and XML normalises line breaks and tabs in attribute values to spaces;
+comments, processing instructions and whitespace around text are not kept. The typed model
+(:mod:`pycuf.models`) is built from it, and every model object keeps a reference to its
+:class:`RawElement` in ``raw``.
 """
 
 from __future__ import annotations

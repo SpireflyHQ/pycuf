@@ -173,7 +173,9 @@ class Policy:
     def agrees(self, stated: Decimal, computed: Decimal) -> bool:
         """Whether a stated value agrees with a computed one under this policy's tolerances.
 
-        ``computed`` is first rounded to the precision of ``stated`` with :attr:`rounding`.
+        When ``stated`` is written with decimals, ``computed`` is first rounded to as many
+        decimals with :attr:`rounding`. A stated value without decimals (``100``, ``1E+2``) is
+        compared as written: exporters drop trailing zeros, so ``100`` usually means 100.00.
         The result does not depend on your decimal context; non-finite values never agree.
         """
         if not (stated.is_finite() and computed.is_finite()):

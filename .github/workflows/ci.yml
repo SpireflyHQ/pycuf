@@ -5,11 +5,15 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # release.yml runs this workflow on the tagged commit before publishing anything.
+  workflow_call:
 
 permissions: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # A literal prefix: in a called workflow github.workflow is the caller's name, so it would
+  # share (and cancel) the release workflow's group.
+  group: ci-${{ github.ref }}
   # Cancel superseded runs on pull requests; let every push to main finish.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -32,7 +36,8 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          enable-cache: true
+          # No cache when releasing a tag (cache-poisoning hardening, as in release.yml).
+          enable-cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: ruff check
         run: uv run --only-group lint ruff check --output-format=github
       - name: ruff format --check
@@ -50,7 +55,8 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          enable-cache: true
+          # No cache when releasing a tag (cache-poisoning hardening, as in release.yml).
+          enable-cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           python-version: "3.11"
       - name: Install (all extras, so optional imports type-check)
         run: uv sync --all-extras
@@ -84,7 +90,8 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          enable-cache: true
+          # No cache when releasing a tag (cache-poisoning hardening, as in release.yml).
+          enable-cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           python-version: ${{ matrix.python }}
       - name: pytest (all extras)
         run: uv run --all-extras pytest --cov --cov-report=term
@@ -102,7 +109,8 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          enable-cache: true
+          # No cache when releasing a tag (cache-poisoning hardening, as in release.yml).
+          enable-cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           python-version: "3.11"
       - name: Build the wheel
         run: uv build --wheel --no-sources --out-dir dist
@@ -147,6 +155,65 @@ jobs:
       - name: pytest -m "not extras" against the installed wheel
         run: '"$RUNNER_TEMP/core/bin/python" -m pytest -m "not extras" -p no:cacheprovider'
 
+  sdist:
+    # Downstream packagers run the suite from the sdist; it must carry everything the tests read.
+    name: Tests from the extracted sdist (3.14)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          python-version: "3.14"
+      - name: Build the sdist
+        run: uv build --sdist --no-sources --out-dir dist
+      - name: Install it (all extras) and the test tools into a fresh venv
+        run: |
+          uv venv --python 3.14 "$RUNNER_TEMP/sdist-venv"
+          uv export --only-group test --only-group interop --no-emit-project \
+            --format requirements.txt --output-file "$RUNNER_TEMP/test-requirements.txt"
+          sdist="$(ls dist/*.tar.gz)"
+          uv pip install --python "$RUNNER_TEMP/sdist-venv" "pycuf[all] @ file://$PWD/$sdist" \
+            -r "$RUNNER_TEMP/test-requirements.txt"
+          mkdir "$RUNNER_TEMP/sdist" && tar -xzf "$sdist" -C "$RUNNER_TEMP/sdist" --strip-components=1
+      - name: pytest inside the extracted sdist (no checkout files)
+        working-directory: ${{ runner.temp }}/sdist
+        run: '"$RUNNER_TEMP/sdist-venv/bin/python" -m pytest -p no:cacheprovider'
+
+  lowest:
+    # The declared minimum versions of the extras must install and pass the suite.
+    name: Lowest declared versions (3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          python-version: "3.11"
+      - name: Install the lowest versions of pycuf's own dependencies
+        run: |
+          uv venv --python 3.11 "$RUNNER_TEMP/lowest"
+          uv export --only-group test --only-group interop --no-emit-project \
+            --format requirements.txt --output-file "$RUNNER_TEMP/test-requirements.txt"
+          # pandas 2.2.0 and pyarrow 17 predate NumPy 2 support (a constraint, not a direct
+          # requirement, so the lowest-direct resolution does not pick NumPy's oldest release).
+          echo "numpy<2" > "$RUNNER_TEMP/constraints.txt"
+          uv pip install --python "$RUNNER_TEMP/lowest" --resolution lowest-direct ".[all]" \
+            -r "$RUNNER_TEMP/test-requirements.txt" -c "$RUNNER_TEMP/constraints.txt"
+          uv pip list --python "$RUNNER_TEMP/lowest"
+      - name: pytest against the installed package
+        run: '"$RUNNER_TEMP/lowest/bin/python" -m pytest -p no:cacheprovider'
+
   generated:
     # The reference pages and sample files are generated; fail when they are stale.
     name: Generated files up to date
@@ -160,7 +227,8 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          enable-cache: true
+          # No cache when releasing a tag (cache-poisoning hardening, as in release.yml).
+          enable-cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: Regenerate the reference pages
         run: uv run --no-default-groups python scripts/gen_docs.py
       - name: Regenerate the sample files
@@ -189,7 +257,8 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          enable-cache: true
+          # No cache when releasing a tag (cache-poisoning hardening, as in release.yml).
+          enable-cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           python-version: ${{ matrix.python }}
       - name: pytest (core only)
         env:
@@ -204,7 +273,7 @@ jobs:
     # Single required status check for branch protection.
     name: CI OK
     if: always()
-    needs: [lint, typing, tests, no-extras, generated]
+    needs: [lint, typing, tests, no-extras, sdist, lowest, generated]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

@@ -51,10 +51,10 @@ Changelog = "https://github.com/SpireflyHQ/pycuf/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 arrow = ["nanoarrow>=0.7"]
-polars = ["polars>=1.44", "nanoarrow>=0.7"]
+polars = ["polars>=1.44.1", "nanoarrow>=0.7"]
 pandas = ["pandas>=2.2", "pyarrow>=17", "nanoarrow>=0.7"]
 parquet = ["pyarrow>=17", "nanoarrow>=0.7"]
-cli = ["typer>=0.16"]
+cli = ["typer>=0.27.2"]
 all = ["pycuf[arrow,polars,pandas,parquet,cli]"]
 
 [project.scripts]
@@ -86,8 +86,15 @@ build-backend = "uv_build"
 default-groups = ["dev"]
 
 [tool.uv.build-backend]
-# The sdist also carries the tests and changelog, so downstream packagers can run the suite.
-source-include = ["tests/**", "CHANGELOG.md"]
+# The sdist also carries the tests and everything they read (changelog, citation, examples, the
+# getting-started page), so downstream packagers can run the suite.
+source-include = [
+    "tests/**",
+    "CHANGELOG.md",
+    "CITATION.cff",
+    "examples/*.xml",
+    "docs/getting-started.md",
+]
 
 [tool.ruff]
 line-length = 100

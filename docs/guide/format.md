@@ -85,9 +85,14 @@ with an anonymised snippet only.
 
 ## Licence and trademarks
 
-Implementing a file format is free: the EU Court of Justice held in *SAS Institute v World
-Programming* (C-406/10, 2012) that the format of data files is not protected by copyright. The
-specification documents themselves are, so pycuf does not bundle them; it describes the format
-in its own words. "Forum CUF XML" was registered as a Benelux trademark by Forum Systeemhuizen
+Data file formats are not protected as computer programs. In *SAS Institute v World Programming*
+(C-406/10, 2012) the EU Court of Justice held that neither a program's functionality nor the
+programming language and data file format it uses are a form of expression of the program, so
+the Software Directive (then 91/250/EEC, now 2009/24/EC) does not protect them. The Court left
+open protection of a language or file format as a work under the general copyright directive
+(2001/29/EC) if it is its author's own intellectual creation, and held that copying elements
+described in a manual can infringe the manual's copyright. pycuf therefore does not bundle the
+specification documents; it describes the format in its own words. This is a summary, not legal
+advice. "Forum CUF XML" was registered as a Benelux trademark by Forum Systeemhuizen
 Bouw. pycuf is an independent project, not affiliated with or endorsed by Ketenstandaard or the
 Forum.

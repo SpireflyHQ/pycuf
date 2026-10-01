@@ -116,7 +116,10 @@ def test_datetimes() -> None:
 
 
 def test_booleans() -> None:
-    assert parse_bool("1") is True
-    assert parse_bool("0") is False
-    assert parse_bool("true") is True
-    assert parse_bool("ja") is None
+    assert parse_bool("1") == (True, False)
+    assert parse_bool(" 0 ") == (False, False)
+    assert parse_bool("true") == (None, False)
+    assert parse_bool("true", textual=True) == (True, True)
+    assert parse_bool("false", textual=True) == (False, True)
+    for text in ("TrUe", "TRUE", "ja", "yes", "2"):
+        assert parse_bool(text, textual=True) == (None, False)

@@ -31,6 +31,8 @@ DEFAULT_MAX_DEPTH: Final = 64
 """Default maximum element nesting depth (AFAS documents imports up to 15 bundle levels)."""
 DEFAULT_MAX_ATTRIBUTE_SIZE: Final = 1024 * 1024
 """Default maximum length of one attribute value (1 Mi characters)."""
+_PADDING: Final = b"\x00\x1a \t\r\n"
+"""Bytes tolerated after the root element (NUL and Ctrl-Z padding, whitespace)."""
 
 
 @dataclass(slots=True)
@@ -137,11 +139,13 @@ def parse_xml(
     try:
         parser.Parse(data, True)
     except pyexpat.ExpatError as exc:
-        if not result:
+        tail = data[parser.ErrorByteIndex :] if result else b""
+        if not result or tail.strip(_PADDING):
             raise _error(exc) from None
+        # Only padding, as old tools and fixed-size buffers write it; anything else is malformed.
         findings.add(
             "CUF1013",
-            f"ignored data after the end of the document ({pyexpat.ErrorString(exc.code)})",
+            f"ignored {len(tail):,} byte(s) of NUL/Ctrl-Z padding after the end of the document",
             line=exc.lineno,
             column=exc.offset,
         )

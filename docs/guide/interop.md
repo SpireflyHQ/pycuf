@@ -58,6 +58,18 @@ cuf.export("out/", format="jsonl", tables=["lines", "bundles"])
 Numbers are written as exact strings (`3612.16`, never `3612.1600000001`), dates in ISO 8601,
 missing values as empty CSV fields or JSON `null`, booleans as `true`/`false`. Files are UTF-8.
 
+### CSV and spreadsheets
+
+pycuf writes texts to CSV exactly as the file has them, so the export stays a faithful copy of
+the data. Spreadsheets treat a cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage
+return as a formula, even when it is quoted, and a formula can fetch data or, in older
+configurations, start programs ([OWASP: CSV injection](https://owasp.org/www-community/attacks/CSV_Injection)).
+A description such as `=HYPERLINK(…)` in a subcontractor's file reaches the spreadsheet as a
+formula. There is no sanitising that is safe for every spreadsheet and keeps the data intact,
+so for files from other parties: import CSV as text (LibreOffice: untick *Evaluate formulas*;
+Excel: *Data → From Text/CSV* and set the columns to text), or use JSONL, Parquet or a
+dataframe instead.
+
 ## Arrow, DuckDB, polars, pandas
 
 With `pycuf[arrow]` (nanoarrow, about 3 MB) every table implements the

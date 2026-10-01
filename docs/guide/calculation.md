@@ -54,7 +54,13 @@ places, and exporters and importers read them differently. A
 | `resources` | `"fallback"` | price a line from its resource lines when it states no prices itself, `"ignore"` them, or `"prefer"` them |
 | `resource_basis` | `"total"` | a resource line's quantity is for the whole line, or `"per-unit"` of the line |
 | `abs_tol`, `rel_tol` | `0.01`, `0` | tolerances for checking stated totals (`math.isclose` semantics) |
-| `rounding` | `"ROUND_HALF_UP"` | rounding of a computed value to the stated precision before comparing |
+| `rounding` | `"ROUND_HALF_UP"` | rounding of a computed value to the decimals of a stated value before comparing |
+
+Comparing a stated with a computed value first rounds the computed value to the decimals the
+stated value is written with (`1234.50`: two), then applies the tolerances. A stated value
+written without decimals (`100`, `1E+2`) is not rounded to: exporters drop trailing zeros, so
+`100` usually means 100.00, and rounding to whole units would hide differences of up to 0.50.
+It is compared as written, within `abs_tol` and `rel_tol`.
 
 ### Presets
 

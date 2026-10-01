@@ -53,6 +53,21 @@ __all__ = ["Built", "build"]
 
 _LEGACY_SORT = re.compile(r"SC[1-6]")
 _LEGACY_SORT_OWNERS = frozenset({"BUNDELING", "BEGROTINGSREGEL", "MAMO_REGEL"})
+_PRICED = frozenset({"BEGROTINGSREGEL", "MAMO_REGEL"})
+_NON_NEGATIVE = frozenset(
+    {
+        "quantity",
+        "hours_per_unit",
+        "hourly_rate",
+        "material_price",
+        "equipment_price",
+        "subcontract_price",
+        "other_price",
+        "price",
+    }
+)
+"""Fields whose negative values are reported (``CUF7001``): legitimate for omitted work or
+proceeds, but worth knowing about."""
 _RANGE = f"0 or ±{NUMBER_MIN} to ±{NUMBER_MAX}, at most {MAX_DECIMALS:,} decimals"
 
 
@@ -83,11 +98,17 @@ class _Tally:
 
 class _Builder:
     def __init__(
-        self, findings: FindingCollector, *, decimal_comma: bool, dutch_dates: bool
+        self,
+        findings: FindingCollector,
+        *,
+        decimal_comma: bool,
+        dutch_dates: bool,
+        textual_booleans: bool,
     ) -> None:
         self.findings = findings
         self.decimal_comma = decimal_comma
         self.dutch_dates = dutch_dates
+        self.textual_booleans = textual_booleans
         self.tallies: dict[tuple[str, str, str], _Tally] = {}
         self.bundles: list[Bundle] = []
         self.lines: list[Line] = []
@@ -113,7 +134,9 @@ class _Builder:
             "CUF3024": "{el} uses the legacy attribute {attr}; read as a sort code of that scheme",
             "CUF3025": "{el} carries its sort codes as attributes ({attr}); read as one sort code "
             "per attribute",
+            "CUF7001": "{el}@{attr} is negative",
             "CUF7003": "{el}@{attr} uses a decimal comma",
+            "CUF7004": "{el}@{attr} is written as true/false instead of 1/0",
         }
         for (code, tag, attr), t in self.tallies.items():
             msg = messages[code].format(el=tag, attr=attr)
@@ -242,8 +265,11 @@ class _Builder:
                 report("CUF3018", f"is outside the supported range ({_RANGE})")
             elif number is None:
                 report("CUF3018", "is not a valid number")
-            elif comma:
-                self.tally("CUF7003", el, attr.name, raw)
+            else:
+                if comma:
+                    self.tally("CUF7003", el, attr.name, raw)
+                if number < 0 and el.tag in _PRICED and attr.field in _NON_NEGATIVE:
+                    self.tally("CUF7001", el, attr.name, raw)
             return number
         if kind == "date":
             day, lenient = parse_date(raw, dutch=self.dutch_dates)
@@ -260,9 +286,11 @@ class _Builder:
                 report("CUF7002", f"is not in ISO 8601 format; read as {moment.isoformat()}")
             return moment
         if kind == "boolean":
-            flag = parse_bool(raw)
+            flag, textual = parse_bool(raw, textual=self.textual_booleans)
             if flag is None:
                 report("CUF3020", "is not a valid boolean (0 or 1)")
+            elif textual:
+                self.tally("CUF7004", el, attr.name, raw)
             return flag
         # enum
         text = raw.strip()
@@ -306,17 +334,15 @@ class _Builder:
             )
         return tuple(codes)
 
+    def quantity(self, el: RawElement) -> QuantityLine:
+        spec = self.check_element(el)
+        assert spec is not None
+        q = QuantityLine(seq=len(self.quantity_lines), raw=el, **self.values(el, spec))
+        self.quantity_lines.append(q)
+        return q
+
     def quantity_lines_of(self, el: RawElement) -> tuple[QuantityLine, ...]:
-        out = []
-        for c in el.children:
-            if c.tag != "HOEVEELHEDENSTAAT_REGEL":
-                continue
-            spec = self.check_element(c)
-            assert spec is not None
-            q = QuantityLine(seq=len(self.quantity_lines), raw=c, **self.values(c, spec))
-            self.quantity_lines.append(q)
-            out.append(q)
-        return tuple(out)
+        return tuple(self.quantity(c) for c in el.children if c.tag == "HOEVEELHEDENSTAAT_REGEL")
 
     # ------------------------------------------------------------------- the tree
     def resource(self, el: RawElement, line_seq: int) -> ResourceLine:
@@ -343,13 +369,19 @@ class _Builder:
         assert spec is not None
         seq = len(self.lines)
         self.lines.append(None)  # type: ignore[arg-type]  # reserve the seq
-        resources = tuple(self.resource(c, seq) for c in el.children if c.tag == "MAMO_REGEL")
+        resources: list[ResourceLine] = []
+        quantities: list[QuantityLine] = []
+        for c in el.children:  # one pass, so every seq follows document order
+            if c.tag == "MAMO_REGEL":
+                resources.append(self.resource(c, seq))
+            elif c.tag == "HOEVEELHEDENSTAAT_REGEL":
+                quantities.append(self.quantity(c))
         line = Line(
             seq=seq,
             bundle_seq=bundle_seq,
             depth=depth,
-            resources=resources,
-            quantity_lines=self.quantity_lines_of(el),
+            resources=tuple(resources),
+            quantity_lines=tuple(quantities),
             sort_codes=self.sort_codes(el),
             raw=el,
             **self.values(el, spec),
@@ -367,18 +399,21 @@ class _Builder:
         values = self.values(el, spec)
         stated = StatedTotals(**{name: values.pop(name) for name in COST_FIELDS})
         children: list[Bundle | Line] = []
-        for c in el.children:
+        quantities: list[QuantityLine] = []
+        for c in el.children:  # one pass, so every seq follows document order
             if c.tag == "BUNDELING":
                 children.append(self.bundle(c, seq, depth + 1))
             elif c.tag == "BEGROTINGSREGEL":
                 children.append(self.line(c, seq, depth))
+            elif c.tag == "HOEVEELHEDENSTAAT_REGEL":
+                quantities.append(self.quantity(c))
         b = Bundle(
             seq=seq,
             parent_seq=parent_seq,
             depth=depth,
             stated=stated,
             children=tuple(children),
-            quantity_lines=self.quantity_lines_of(el),
+            quantity_lines=tuple(quantities),
             sort_codes=self.sort_codes(el),
             raw=el,
             **values,
@@ -450,9 +485,15 @@ def build(
     *,
     decimal_comma: bool = False,
     dutch_dates: bool = False,
+    textual_booleans: bool = False,
 ) -> Built:
     """Build the model of a CUF document whose root element is ``root`` (already checked)."""
-    b = _Builder(findings, decimal_comma=decimal_comma, dutch_dates=dutch_dates)
+    b = _Builder(
+        findings,
+        decimal_comma=decimal_comma,
+        dutch_dates=dutch_dates,
+        textual_booleans=textual_booleans,
+    )
     root_spec = b.check_element(root)
     assert root_spec is not None
     created = b.values(root, root_spec)["created"]

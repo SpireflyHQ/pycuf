@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import codecs
 import datetime as dt
 import io
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import cufgen
 import pytest
@@ -226,6 +228,57 @@ def test_repairs() -> None:
     assert {"CUF1010", "CUF1012"} <= codes(cuf)
 
 
+@pytest.mark.parametrize(
+    ("codec", "name"),
+    [
+        ("utf-16", "UTF-16"),
+        ("utf-16-be", "UTF-16"),
+        ("utf-32", "UTF-32"),
+        ("iso2022_jp", "ISO-2022-JP"),
+    ],
+)
+@pytest.mark.parametrize("repair", ["bare-ampersand", "control-chars"])
+def test_repairs_never_change_valid_text(codec: str, name: str, repair: str) -> None:
+    value = "日本 … &amp; B" if codec == "iso2022_jp" else "A … Ħ &amp; B"
+    text = f'<?xml version="1.0" encoding="{name}"?><CUF AANMAAKDATUMTIJD="2026-01-01T00:00:00" X="{value}"/>'
+    data = text.encode(codec)
+    if codec == "utf-16-be":
+        data = b"\xfe\xff" + data
+    cuf = pycuf.read(data, repair={repair})
+    assert cuf.raw.get("X") == value.replace("&amp;", "&")
+    assert not {"CUF1010", "CUF1012"} & codes(cuf)
+
+
+@pytest.mark.parametrize("codec", ["utf-16", "utf-32"])
+def test_repairs_in_wide_encodings(codec: str) -> None:
+    name = codec.upper()
+    text = f'<?xml version="1.0" encoding="{name}"?><CUF AANMAAKDATUMTIJD="2026-01-01T00:00:00" X="A & B\x01"/>'
+    cuf = pycuf.read(text.encode(codec), repair={"bare-ampersand", "control-chars"})
+    assert cuf.raw.get("X") == "A & B"
+    assert {"CUF1010", "CUF1012"} <= codes(cuf)
+
+
+def test_utf32_byte_orders_and_invalid_input() -> None:
+    text = (
+        '<?xml version="1.0" encoding="UTF-32"?><CUF AANMAAKDATUMTIJD="2026-01-01T00:00:00" X="€"/>'
+    )
+    for data in (
+        codecs.BOM_UTF32_BE + text.encode("utf-32-be"),
+        text.encode("utf-32-be"),
+        text.encode("utf-32-le"),
+    ):
+        assert pycuf.read(data).raw.get("X") == "€"
+    truncated = codecs.BOM_UTF32_LE + text.encode("utf-32-le") + b"\x00"
+    with pytest.raises(XmlSyntaxError, match="not valid utf-32-le"):
+        pycuf.read(truncated)
+    surrogate = codecs.BOM_UTF32_LE + text.replace("€", "\ud800").encode(
+        "utf-32-le", "surrogatepass"
+    )
+    for data in (truncated, surrogate, b"\x00\x00<\x00\x00\x00C\x00"):
+        report = pycuf.validate(data)
+        assert [f.code for f in report.findings] == ["CUF2001"]
+
+
 def test_option_validation() -> None:
     with pytest.raises(ValueError, match="lenient"):
         pycuf.read(b"<CUF/>", lenient=["commas"])  # type: ignore[list-item]
@@ -283,3 +336,76 @@ def test_raw_layer(estimate: cufgen.Estimate) -> None:
     assert line.to_dict()["tag"] == "BEGROTINGSREGEL"
     assert raw == pycuf.read(cufgen.write(estimate, "ibis")).raw
     assert "RawElement('CUF'" in repr(raw)
+
+
+def test_streams_returning_short_reads(estimate: cufgen.Estimate) -> None:
+    data = cufgen.write(estimate)
+
+    class Raw(io.RawIOBase):  # a pipe or socket: at most 80 bytes per read
+        def __init__(self) -> None:
+            self.buffer = io.BytesIO(data)
+
+        def readable(self) -> bool:
+            return True
+
+        def readinto(self, b: Any) -> int:
+            chunk = self.buffer.read(min(len(b), 80))
+            b[: len(chunk)] = chunk
+            return len(chunk)
+
+    assert len(pycuf.read(Raw()).lines) == len(pycuf.read(data).lines)
+    with pytest.raises(pycuf.LimitExceededError):
+        pycuf.read(Raw(), max_size=1000)
+
+    class Empty(io.RawIOBase):  # non-blocking, nothing available yet
+        def readable(self) -> bool:
+            return True
+
+        def readinto(self, b: Any) -> None:
+            return None
+
+    with pytest.raises(BlockingIOError):
+        pycuf.read(Empty())
+
+
+def test_quantity_lines_follow_document_order() -> None:
+    xml = b"""<CUF AANMAAKDATUMTIJD="2026-01-01T00:00:00">
+      <PROJECTGEGEVENS CUF_VERSIE="4.003" AANMAAKDATUM="2026-01-01" VALUTA="EUR"/>
+      <BEGROTING><BUNDELING>
+        <HOEVEELHEDENSTAAT_REGEL OMSCHRIJVING="1 bundle, before"/>
+        <BEGROTINGSREGEL BTW="21">
+          <HOEVEELHEDENSTAAT_REGEL OMSCHRIJVING="2 line"/>
+          <MAMO_REGEL KOSTENSOORT="MATERIAAL">
+            <HOEVEELHEDENSTAAT_REGEL OMSCHRIJVING="3 resource"/>
+          </MAMO_REGEL>
+          <HOEVEELHEDENSTAAT_REGEL OMSCHRIJVING="4 line, after"/>
+        </BEGROTINGSREGEL>
+        <HOEVEELHEDENSTAAT_REGEL OMSCHRIJVING="5 bundle, after"/>
+      </BUNDELING></BEGROTING></CUF>"""
+    cuf = pycuf.read(xml)
+    assert [q.description for q in cuf.quantity_lines] == [
+        "1 bundle, before",
+        "2 line",
+        "3 resource",
+        "4 line, after",
+        "5 bundle, after",
+    ]
+    assert all(cuf.quantity_lines[q.seq] is q for q in cuf.quantity_lines)
+    assert [q.description for q in cuf.lines[0].quantity_lines] == ["2 line", "4 line, after"]
+
+
+def test_textual_booleans_and_negative_amounts() -> None:
+    xml = b"""<CUF AANMAAKDATUMTIJD="2026-01-01T00:00:00">
+      <PROJECTGEGEVENS CUF_VERSIE="4.003" AANMAAKDATUM="2026-01-01" VALUTA="EUR"/>
+      <BEGROTING>
+        <BEGROTINGSREGEL BTW="21" STELPOST="true" HOEVEELHEID="-2" MATERIAALPRIJS="5"/>
+        <BEGROTINGSREGEL BTW="21" STELPOST="TrUe" HOEVEELHEID="-1" MATERIAALPRIJS="-0"/>
+      </BEGROTING></CUF>"""
+    cuf = pycuf.read(xml)
+    assert [ln.provisional_sum for ln in cuf.lines] == [True, None]
+    found = {f.code: f for f in cuf.findings}
+    assert "CUF7004" in found and "CUF3020" in found
+    assert "(2 times" in found["CUF7001"].message  # aggregated; -0 is not negative
+    strict = pycuf.read(xml, lenient=())
+    assert strict.lines[0].provisional_sum is None
+    assert "CUF7004" not in codes(strict) and "CUF3020" in codes(strict)

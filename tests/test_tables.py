@@ -202,3 +202,13 @@ def test_missing_extra_message(cuf: pycuf.CufFile, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(importlib, "import_module", fake)
     with pytest.raises(pycuf.MissingExtraError, match=r"pycuf\[arrow\]"):
         cuf.tables["lines"].to_arrow()
+
+
+def test_csv_keeps_texts_exactly(tmp_path: Path) -> None:
+    texts = ["=1+1", "+31 6", "-", "@SUM(A1)", 'say "hi", twice']
+    lines = "".join(
+        f'<BEGROTINGSREGEL BTW="21" OMSCHRIJVING="{t.replace(chr(34), "&quot;")}"/>' for t in texts
+    )
+    (path,) = pycuf.read(_doc(lines)).export(tmp_path, tables=["lines"])
+    with Path(path).open(encoding="utf-8", newline="") as fh:
+        assert [row["description"] for row in csv.DictReader(fh)] == texts

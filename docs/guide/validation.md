@@ -63,8 +63,10 @@ pycuf.validate(
 ```
 
 Unknown codes raise `ValueError`, so a typo does not silently do nothing. `max_findings_per_code`
-(default 100) and `max_findings` (10 000) cap the report; `report.counts` still counts every
-occurrence and `report.suppressed` says how many were dropped.
+(default 100) and `max_findings` (10 000) cap the list of findings; `report.counts` and
+`report.severity_counts` still count every occurrence, `report.suppressed` says how many were
+dropped, and `report.ok` and `report.max_severity` are based on the full counts, so a limit
+never turns a failing file into a passing one.
 
 ## JSON
 

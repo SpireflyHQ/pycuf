@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, TypeAlias, cast
+from typing import Any, BinaryIO, TypeAlias, cast
 
 from .errors import LimitExceededError
 
@@ -38,6 +38,7 @@ def read_source(source: SourceLike, *, max_size: int | None = DEFAULT_MAX_SIZE) 
         FileNotFoundError: The path does not exist.
         LimitExceededError: The input is larger than ``max_size``.
         TypeError: ``source`` is of an unsupported type, or a text stream.
+        BlockingIOError: ``source`` is a non-blocking stream without data available.
     """
     if isinstance(source, (bytes, bytearray, memoryview)):
         data = bytes(source)
@@ -52,14 +53,11 @@ def read_source(source: SourceLike, *, max_size: int | None = DEFAULT_MAX_SIZE) 
                 f"{name}: file is larger than the limit of {max_size:,} bytes "
                 "(pass a larger max_size if this file is legitimate)"
             )
-        data = path.read_bytes()
+        with path.open("rb") as fh:  # the file may have grown since stat()
+            data = _read_all(fh, name, max_size)
     elif hasattr(source, "read"):
-        stream = source
-        name = str(getattr(stream, "name", "<stream>"))
-        chunk = stream.read(-1 if max_size is None else max_size + 1)
-        if not isinstance(cast("object", chunk), bytes):
-            raise TypeError("pycuf needs a binary stream; open the file in 'rb' mode")
-        data = chunk
+        name = str(getattr(source, "name", "<stream>"))
+        data = _read_all(source, name, max_size)
     else:
         raise TypeError(f"unsupported source type {type(source).__name__}")
     if max_size is not None and len(data) > max_size:
@@ -68,3 +66,25 @@ def read_source(source: SourceLike, *, max_size: int | None = DEFAULT_MAX_SIZE) 
             "(pass a larger max_size if this input is legitimate)"
         )
     return Source(name, data)
+
+
+def _read_all(stream: Any, name: str, max_size: int | None) -> bytes:
+    """Read ``stream`` to its end, but never more than ``max_size + 1`` bytes.
+
+    Raw (unbuffered) streams such as pipes and sockets may return fewer bytes than asked for
+    before the end, so this reads until ``read`` returns ``b""``.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while max_size is None or total <= max_size:
+        want = -1 if max_size is None else max_size + 1 - total
+        chunk = stream.read(want)
+        if chunk is None:
+            raise BlockingIOError(f"{name}: the non-blocking stream has no data available")
+        if not isinstance(cast("object", chunk), bytes):
+            raise TypeError("pycuf needs a binary stream; open the file in 'rb' mode")
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+    return b"".join(chunks)

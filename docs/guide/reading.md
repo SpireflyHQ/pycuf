@@ -74,8 +74,10 @@ Text lines (headings and remarks without a quantity or prices) have `line.is_tex
 
 ## The raw layer and vendor extensions
 
-Every model object keeps its `RawElement` in `.raw`: the element exactly as written, with all
-attributes (including vendor extensions), its line number and its path.
+Every model object keeps its `RawElement` in `.raw`: the element with all its attributes
+(including vendor extensions) as parsed, its line number and its path. Values are the parsed
+text, not the bytes: references such as `&amp;` are resolved, XML turns line breaks and tabs
+inside attribute values into spaces, and comments and processing instructions are not kept.
 
 ```python
 line.raw.get("BTW")  # '' – the raw text
@@ -101,15 +103,17 @@ was declared.
 
 ## Lenient parsing
 
-By default `read()` accepts two common deviations and reports each acceptance:
+By default `read()` accepts three common deviations and reports each acceptance:
 
 | Option | Accepts | Finding |
 |---|---|---|
 | `"decimal-comma"` | `12,5` as 12.5 | `CUF7003` |
 | `"dmy-date"` | `3-5-2024` and `3-5-2024 13:10:29` | `CUF7002` |
+| `"textual-boolean"` | `true` and `false` (exactly so) as 1 and 0 | `CUF7004` |
 
 Pass `lenient=()` to read strictly; such values are then reported as invalid (`CUF3018`,
-`CUF3019`) and left `None`.
+`CUF3019`, `CUF3020`) and left `None`. Negative quantities and prices on estimate and resource
+lines are valid (omitted work, proceeds from salvaged material) but reported as `CUF7001` (INFO).
 
 ## Repairs
 
