@@ -186,7 +186,9 @@ zero multiplier came out as 0.
    `uv version --bump minor --bump rc` (0.1.0 → 0.2.0rc1), then `uv version --bump rc`
    (→ 0.2.0rc2) and `uv version --bump stable` (→ 0.2.0). Also update `version` and
    `date-released` in `CITATION.cff` (a test checks the version).
-2. Move the `[Unreleased]` entries in `CHANGELOG.md` under the new version and date.
+2. Move the `[Unreleased]` entries in `CHANGELOG.md` under the new version and date. A
+   pre-release uses the section (and the `CITATION.cff` version) of the release it leads to, so
+   `0.2.0rc1` needs a `## [0.2.0]` section.
 3. Commit, then `git tag -a vX.Y.Z -m "pycuf X.Y.Z"` and `git push --follow-tags`.
 4. The `Release` workflow checks that the tag matches the version, builds and checks the
    distributions, signs them with Sigstore, waits for approval in the `pypi` environment,
