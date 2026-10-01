@@ -1,0 +1,60 @@
+name: File compatibility report
+description: A CUF file from some estimating package is read, computed or checked incorrectly.
+labels: ["compatibility", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!CAUTION]
+        > **Do not upload the CUF file. Not the whole file, not a zip, not "just the header".**
+        > Estimates contain client names and addresses and commercially sensitive prices, and public issues
+        > cannot be fully deleted.
+        >
+        > What helps us most: the exporting software and version, the finding codes pycuf reported, and a
+        > **hand-made or anonymised** snippet that shows the quirk (namespace, encoding, number or date format,
+        > vendor attributes, totals that do not add up, …). See
+        > [CONTRIBUTING.md](https://github.com/SpireflyHQ/pycuf/blob/main/CONTRIBUTING.md#contributing-anonymised-samples).
+  - type: checkboxes
+    id: no-real-data
+    attributes:
+      label: Data protection
+      options:
+        - label: I have **not** attached a real CUF file, and everything below is fictitious or anonymised.
+          required: true
+  - type: input
+    id: exporting-software
+    attributes:
+      label: Exporting software and version
+      placeholder: "e.g. Ibis Calculeren voor Bouw 2026, Kraan, Bakker & Spees CIVIEL 8.6, Dataviewers CUF Converter"
+    validations:
+      required: true
+  - type: textarea
+    id: findings
+    attributes:
+      label: Finding codes reported
+      description: |
+        Finding codes and counts, e.g. from `print(dict(pycuf.validate(path).counts))` or
+        `pycuf validate FILE --format json`. Codes and counts alone are fine; check messages for real values.
+      render: text
+  - type: textarea
+    id: snippet
+    attributes:
+      label: Anonymised snippet
+      description: |
+        The smallest XML fragment that shows the quirk, with all names, codes, descriptions and amounts
+        replaced by fictitious values. Mention the encoding, BOM and namespace if they matter.
+      render: xml
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What should pycuf have done? If the receiving software (AFAS, Exact, 4PS, …) handles it differently, say how.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: pycuf and Python version
+      placeholder: "pycuf 0.1.0, Python 3.13.7, Windows 11"
+    validations:
+      required: true

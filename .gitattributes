@@ -1,0 +1,13 @@
+# Normalise line endings to LF; the byte-exact files below opt out.
+* text=auto eol=lf
+
+# Keep the sample CUF files byte-for-byte: CRLF line endings, BOMs and windows-1252 bytes
+# are part of what pycuf must handle and test.
+examples/*.xml -text
+
+# Generated files: collapsed in GitHub diffs and left out of the language statistics.
+# Regenerate with `uvx nox -s generate`; never edit them by hand.
+docs/reference/codes.md linguist-generated=true
+docs/reference/tables.md linguist-generated=true
+docs/reference/glossary.md linguist-generated=true
+examples/*.xml linguist-generated=true

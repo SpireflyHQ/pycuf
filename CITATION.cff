@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use pycuf in research or professional work, please cite it as below."
+type: software
+title: "pycuf: read, check and analyse CUF-XML construction cost estimates"
+abstract: >-
+  pycuf is a Python library that reads CUF-XML (Calculatie Uitwissel Formaat), the Dutch
+  exchange format for construction cost estimates, into a typed model. It computes costs with
+  exact decimals under explicit, configurable interpretation policies, reports structural and
+  calculation problems as graded, coded findings instead of refusing to load a file, and exports
+  normalized tables to CSV, JSONL, Arrow, polars, pandas and Parquet. The core has no
+  dependencies outside the Python standard library.
+authors:
+  - family-names: "van der Burgh"
+    given-names: "Ben"
+    email: "ben@spirefly.com"
+    affiliation: "Spirefly"
+repository-code: "https://github.com/SpireflyHQ/pycuf"
+url: "https://spireflyhq.github.io/pycuf/"
+license: MIT
+version: "0.1.0"
+date-released: "2026-10-01"
+keywords:
+  - CUF
+  - CUF-XML
+  - "Calculatie Uitwissel Formaat"
+  - "cost estimate"
+  - construction
+  - "quantity surveying"
+  - XML
+  - Python

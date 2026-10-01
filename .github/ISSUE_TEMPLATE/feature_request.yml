@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest a new feature, check, calculation policy, export or API improvement.
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!CAUTION]
+        > **Never upload, attach or paste a real CUF file** in an issue. Estimates contain client data and
+        > commercially sensitive prices. Use hand-made or anonymised snippets only.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and why is it hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: API sketch, CLI flags, new finding code, policy option, export format, …
+  - type: textarea
+    id: references
+    attributes:
+      label: Specification references
+      description: Relevant parts of the CUF-XML 4.003 schema or usage rules, or how estimating/ERP software behaves.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

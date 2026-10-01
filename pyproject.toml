@@ -1,0 +1,183 @@
+[project]
+name = "pycuf"
+version = "0.1.0"
+description = "Read, check and analyse CUF-XML construction cost estimates (Calculatie Uitwissel Formaat) in Python."
+readme = "README.md"
+authors = [{ name = "Ben van der Burgh", email = "ben@spirefly.com" }]
+maintainers = [{ name = "Ben van der Burgh", email = "ben@spirefly.com" }]
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = []
+keywords = [
+    "cuf",
+    "cuf-xml",
+    "calculatie uitwissel formaat",
+    "begroting",
+    "cost estimate",
+    "construction",
+    "bouw",
+    "quantity surveying",
+    "ketenstandaard",
+    "xml",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Other Audience",
+    "Natural Language :: English",
+    "Natural Language :: Dutch",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: Markup :: XML",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/SpireflyHQ/pycuf"
+Documentation = "https://spireflyhq.github.io/pycuf/"
+Repository = "https://github.com/SpireflyHQ/pycuf"
+Issues = "https://github.com/SpireflyHQ/pycuf/issues"
+Changelog = "https://github.com/SpireflyHQ/pycuf/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+arrow = ["nanoarrow>=0.7"]
+polars = ["polars>=1.44", "nanoarrow>=0.7"]
+pandas = ["pandas>=2.2", "pyarrow>=17", "nanoarrow>=0.7"]
+parquet = ["pyarrow>=17", "nanoarrow>=0.7"]
+cli = ["typer>=0.16"]
+all = ["pycuf[arrow,polars,pandas,parquet,cli]"]
+
+[project.scripts]
+pycuf = "pycuf.__main__:main"
+
+[dependency-groups]
+test = ["pytest>=9", "pytest-cov>=7", "hypothesis>=6.130", "duckdb>=1.1"]
+typing = ["mypy>=2", "pyright>=1.1.400"]
+lint = ["ruff>=0.16"]
+dev = [
+    { include-group = "test" },
+    { include-group = "typing" },
+    { include-group = "lint" },
+]
+docs = [
+    "mkdocstrings-python>=2.0.9",
+    "zensical>=0.0.67",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.uv.build-backend]
+# The sdist also carries the tests and changelog, so downstream packagers can run the suite.
+source-include = ["tests/**", "CHANGELOG.md"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "SIM", "C4", "RUF", "PT", "PL", "D", "N", "S", "TC", "PERF",
+    "PIE", "RET", "ARG", "PTH", "ERA", "ISC", "LOG", "G",
+]
+ignore = [
+    "D105", "D107",       # magic methods / __init__ documented on the class
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",
+    "S101",               # asserts are used for type narrowing
+    "RUF001", "RUF002", "RUF003",  # Dutch text contains non-ASCII characters on purpose
+    "FBT003",             # pyexpat's Parse(data, isfinal) takes a positional bool
+    "TC001", "TC003",     # annotations are strings (PEP 563); runtime imports are cheap stdlib
+    "PLR0917",
+    "UP042",              # (str, Enum) keeps Typer's enum handling simple
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "S", "PLR", "ARG", "N802", "PT011", "PT018", "PLC0415", "E501"]
+"scripts/**" = ["D", "S", "T20", "PLR"]
+"noxfile.py" = ["D"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+files = ["src/pycuf"]
+
+[[tool.mypy.overrides]]
+module = ["nanoarrow.*", "pyarrow.*"]
+ignore_missing_imports = true
+
+[tool.pyright]
+include = ["src/pycuf"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+pythonpath = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
+xfail_strict = true
+log_level = "INFO"
+filterwarnings = ["error"]
+markers = [
+    "extras: needs an optional extra (arrow/polars/pandas/parquet/cli); deselected in the no-extras CI job",
+    "corpus: needs the private corpus of real CUF files (PYCUF_CORPUS); skipped when it is absent",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["pycuf"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "@overload", "raise NotImplementedError", "\\.\\.\\."]
+
+[tool.typos.files]
+extend-exclude = [
+    "examples/*.xml",   # synthetic sample files (Dutch)
+    "uv.lock",
+]
+
+[tool.typos.default.extend-identifiers]
+arro3 = "arro3"
+
+[tool.typos.default.extend-words]
+# Dutch CUF vocabulary that typos would "correct" to English
+begroting = "begroting"
+bundeling = "bundeling"
+eenheid = "eenheid"
+hoeveelheid = "hoeveelheid"
+omschrijving = "omschrijving"
+productie = "productie"
+staart = "staart"
+waarde = "waarde"
+inzet = "inzet"
+aantal = "aantal"
+prijs = "prijs"
+calculatie = "calculatie"
+uitwissel = "uitwissel"
+formaat = "formaat"
+admi = "admi"
+commentaar = "commentaar"
+isolatie = "isolatie"
+leeg = "leeg"
+materiaal = "materiaal"
+methode = "methode"
+middel = "middel"
+tekst = "tekst"
