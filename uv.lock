@@ -1189,7 +1189,7 @@ wheels = [
 
 [[package]]
 name = "pycuf"
-version = "0.1.0rc1"
+version = "0.1.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
