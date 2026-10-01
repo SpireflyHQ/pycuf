@@ -33,7 +33,7 @@ import csv
 import datetime as dt
 import json
 import os
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -57,6 +57,11 @@ round half-even to 15 decimals."""
 
 NUMBER = (28, 15)
 """Arrow precision and scale of ``number`` columns."""
+
+_MAX_PLAIN = 2_000
+"""Most characters CSV and JSONL spend on one number. Every number pycuf reads fits (at most 309
+integer digits and 1,074 decimals); only computed values from absurd inputs, such as nested
+multipliers of 1E+300, can exceed it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,8 +341,10 @@ class Tables:
     ) -> list[str]:
         """Write tables to ``directory`` (one file per table); return the written paths.
 
-        ``csv`` and ``jsonl`` need no dependencies (numbers are written as exact strings, dates
-        in ISO 8601); ``parquet`` needs ``pycuf[parquet]``.
+        ``csv`` and ``jsonl`` need no dependencies (numbers are written as exact strings in plain
+        notation, dates in ISO 8601); ``parquet`` needs ``pycuf[parquet]``. A computed number
+        whose plain notation would take more than 2,000 characters (only absurd inputs produce
+        one) raises ``ValueError`` naming the table, column and row.
         """
         names = _names(tables)
         out = Path(directory)
@@ -355,15 +362,19 @@ class Tables:
         for n in names:
             path = out / f"{n}.{format}"
             cols = [c.name for c in TABLES[n]]
+            convert = _csv_value if format == "csv" else _json_value
+            rows = (
+                [_cell(n, col, i, v, convert) for col, v in zip(cols, row, strict=True)]
+                for i, row in enumerate(self._rows(n))
+            )
             with path.open("w", encoding="utf-8", newline="") as fh:
                 if format == "csv":
                     writer = csv.writer(fh)
                     writer.writerow(cols)
-                    for row in self._rows(n):
-                        writer.writerow([_csv_value(v) for v in row])
+                    writer.writerows(rows)
                 else:
-                    for row in self._rows(n):
-                        record = {k: _json_value(v) for k, v in zip(cols, row, strict=True)}
+                    for values in rows:
+                        record = dict(zip(cols, values, strict=True))
                         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             paths.append(str(path))
         return paths
@@ -389,13 +400,34 @@ def _names(tables: Iterable[str] | None) -> Sequence[str]:
     return names
 
 
+def _cell(table: str, column: str, row: int, v: Any, convert: Callable[[Any], Any]) -> Any:
+    try:
+        return convert(v)
+    except ValueError as exc:
+        raise ValueError(f"table {table!r}, column {column!r}, row {row}: {exc}") from None
+
+
+def _plain(v: Decimal) -> str:
+    """``v`` in plain notation, exactly; ``ValueError`` instead of an absurdly long string."""
+    _, digits, exponent = v.as_tuple()
+    if not isinstance(exponent, int):
+        raise ValueError(f"{v} is not a finite number")
+    integer = 1 if v.is_zero() else max(len(digits) + exponent, 1)
+    length = integer + max(-exponent, 0) + 2  # sign and decimal point
+    if length > _MAX_PLAIN:
+        raise ValueError(
+            f"{v} would take {length:,} characters in plain notation (at most {_MAX_PLAIN:,})"
+        )
+    return format(v, "f")
+
+
 def _csv_value(v: Any) -> Any:
     if v is None:
         return ""
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, Decimal):
-        return format(v, "f")
+        return _plain(v)
     if isinstance(v, (dt.date, dt.datetime)):
         return v.isoformat()
     return v
@@ -403,7 +435,7 @@ def _csv_value(v: Any) -> Any:
 
 def _json_value(v: Any) -> Any:
     if isinstance(v, Decimal):
-        return format(v, "f")
+        return _plain(v)
     if isinstance(v, (dt.date, dt.datetime)):
         return v.isoformat()
     return v

@@ -38,12 +38,22 @@ from .spec import (
     AttributeSpec,
     ElementSpec,
 )
-from .values import parse_bool, parse_date, parse_datetime, parse_number
+from .values import (
+    MAX_DECIMALS,
+    NUMBER_MAX,
+    NUMBER_MIN,
+    is_number,
+    parse_bool,
+    parse_date,
+    parse_datetime,
+    parse_number,
+)
 
 __all__ = ["Built", "build"]
 
 _LEGACY_SORT = re.compile(r"SC[1-6]")
 _LEGACY_SORT_OWNERS = frozenset({"BUNDELING", "BEGROTINGSREGEL", "MAMO_REGEL"})
+_RANGE = f"0 or ±{NUMBER_MIN} to ±{NUMBER_MAX}, at most {MAX_DECIMALS:,} decimals"
 
 
 @dataclass(slots=True)
@@ -228,7 +238,9 @@ class _Builder:
             return raw
         if kind == "number":
             number, comma = parse_number(raw, decimal_comma=self.decimal_comma)
-            if number is None:
+            if number is None and is_number(raw, decimal_comma=self.decimal_comma):
+                report("CUF3018", f"is outside the supported range ({_RANGE})")
+            elif number is None:
                 report("CUF3018", "is not a valid number")
             elif comma:
                 self.tally("CUF7003", el, attr.name, raw)

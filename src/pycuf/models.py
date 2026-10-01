@@ -26,6 +26,7 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import TypeAlias
 
+from ._numeric import in_context
 from .raw import RawElement
 from .spec import ELEMENTS
 
@@ -75,7 +76,8 @@ class Costs:
     """A cost breakdown: labour hours plus the amounts of the five cost types.
 
     Supports ``+``, multiplication by a number and :meth:`get`; :attr:`total` is the sum of the
-    five amounts (hours are not money).
+    five amounts (hours are not money). The arithmetic runs in pycuf's own decimal context, so
+    your context does not change the results.
     """
 
     hours: Decimal = _ZERO
@@ -86,6 +88,7 @@ class Costs:
     other: Decimal = _ZERO
 
     @property
+    @in_context
     def total(self) -> Decimal:
         """Labour + material + equipment + subcontracting + other."""
         return self.labour + self.material + self.equipment + self.subcontracting + self.other
@@ -94,6 +97,7 @@ class Costs:
         """Amount of one cost type."""
         return getattr(self, _COST_FIELD[cost_type])  # type: ignore[no-any-return]
 
+    @in_context
     def __add__(self, other: Costs) -> Costs:
         if not isinstance(other, Costs):
             return NotImplemented
@@ -106,6 +110,7 @@ class Costs:
             other=self.other + other.other,
         )
 
+    @in_context
     def __mul__(self, factor: Decimal | int) -> Costs:
         if not isinstance(factor, (Decimal, int)):
             return NotImplemented
@@ -167,6 +172,7 @@ class StatedTotals:
         return any(getattr(self, name) is not None for name in COST_FIELDS)
 
     @property
+    @in_context
     def total(self) -> Decimal | None:
         """Sum of the five amounts that are written (``None`` if none is)."""
         values = [getattr(self, n) for n in COST_FIELDS[1:] if getattr(self, n) is not None]
@@ -268,6 +274,7 @@ class QuantityLine:
     raw: RawElement | None = field(default=None, repr=False)
 
     @property
+    @in_context
     def product(self) -> Decimal | None:
         """Product of the numbers that are filled in (``None`` if none is).
 

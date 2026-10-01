@@ -4,7 +4,10 @@ CUF-XML 4.003 uses the Microsoft XDR data types. The parsers follow their defini
 
 - ``number``: an optionally signed decimal with an optional exponent (``111``, ``3.14``,
   ``-123.456E+10``); the CUF specification adds "a decimal point if needed, no thousands
-  separator". Parsed into :class:`decimal.Decimal`, never ``float``.
+  separator". Parsed into :class:`decimal.Decimal`, never ``float``. XDR gives numbers the range
+  of a double, so pycuf reads zero and magnitudes from :data:`NUMBER_MIN` to :data:`NUMBER_MAX`
+  with at most :data:`MAX_DECIMALS` decimals (:func:`in_range`); a short text such as
+  ``0e-1000000000000`` cannot make later calculations or exports enormous.
 - ``date``: ``YYYY-MM-DD``. ``dateTime``: ``YYYY-MM-DD`` with an optional ``Thh:mm:ss[.fff…]``
   and no time zone.
 - ``boolean``: ``0`` or ``1``.
@@ -18,9 +21,26 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
-__all__ = ["parse_bool", "parse_date", "parse_datetime", "parse_number"]
+__all__ = [
+    "MAX_DECIMALS",
+    "NUMBER_MAX",
+    "NUMBER_MIN",
+    "in_range",
+    "is_number",
+    "parse_bool",
+    "parse_date",
+    "parse_datetime",
+    "parse_number",
+]
+
+NUMBER_MAX = Decimal("1.7976931348623157E+308")
+"""The largest magnitude of an XDR ``number`` (the largest double)."""
+NUMBER_MIN = Decimal("2.2250738585072014E-308")
+"""The smallest non-zero magnitude of an XDR ``number`` (the smallest normal double)."""
+MAX_DECIMALS = 1074
+"""The most decimals a number may have: enough to write any double exactly."""
 
 _NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", re.ASCII)
 _NUMBER_COMMA = re.compile(r"[+-]?(?:[0-9]+(?:,[0-9]*)?|,[0-9]+)", re.ASCII)
@@ -51,14 +71,44 @@ def parse_number(text: str, *, decimal_comma: bool = False) -> tuple[Decimal | N
             forbids but some exporters write.
 
     Returns:
-        ``(value, used_comma)``; ``value`` is ``None`` when the text is not a valid number.
+        ``(value, used_comma)``; ``value`` is ``None`` when the text is not a valid number or the
+        number is not :func:`in_range`. The result does not depend on the decimal context.
     """
     s = text.strip()
     if _NUMBER.fullmatch(s):
-        return Decimal(s), False
-    if decimal_comma and _NUMBER_COMMA.fullmatch(s):
-        return Decimal(s.replace(",", ".")), True
-    return None, False
+        comma = False
+    elif decimal_comma and _NUMBER_COMMA.fullmatch(s):
+        s, comma = s.replace(",", "."), True
+    else:
+        return None, False
+    try:
+        value = Decimal(s)  # exact; the context only decides how an impossible exponent fails
+    except InvalidOperation:
+        return None, False
+    if not in_range(value):  # also the NaN of an impossible exponent when that is not trapped
+        return None, False
+    return value, comma
+
+
+def is_number(text: str, *, decimal_comma: bool = False) -> bool:
+    """Whether ``text`` is written as an XDR ``number``, whatever its magnitude."""
+    s = text.strip()
+    return bool(_NUMBER.fullmatch(s) or (decimal_comma and _NUMBER_COMMA.fullmatch(s)))
+
+
+def in_range(value: Decimal) -> bool:
+    """Whether pycuf reads ``value`` as a number (see :func:`parse_number`).
+
+    That is zero or a magnitude from :data:`NUMBER_MIN` to :data:`NUMBER_MAX`, with at most
+    :data:`MAX_DECIMALS` decimals.
+    """
+    if not value.is_finite():
+        return False
+    exponent = value.as_tuple().exponent
+    assert isinstance(exponent, int)
+    if exponent < -MAX_DECIMALS:
+        return False
+    return value.is_zero() or NUMBER_MIN <= value.copy_abs() <= NUMBER_MAX
 
 
 def parse_date(text: str, *, dutch: bool = False) -> tuple[dt.date | None, bool]:

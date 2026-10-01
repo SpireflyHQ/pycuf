@@ -91,6 +91,11 @@ exactly. A value that does not fit is **not rounded**: Arrow export raises `Valu
 table, column and row. Pass `on_inexact="round"` (half-even to 15 decimals) or `"null"` to export
 anyway.
 
+CSV and JSONL write every number exactly, in plain notation. Every number pycuf reads fits in at
+most 2,000 characters; a computed value that would not (only absurd inputs, such as nested
+multipliers of `1E+300`, produce one) raises `ValueError` naming the table, column and row
+instead of writing an enormous string.
+
 !!! tip "Computing with scale-15 decimals"
     Sums stay exact in pyarrow, polars and DuckDB. Products of two scale-15 columns need care:
     pyarrow needs a `decimal256` cast, DuckDB's result type `DECIMAL(38,30)` overflows around

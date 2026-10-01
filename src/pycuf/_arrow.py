@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Sequence
-from decimal import ROUND_HALF_EVEN, Context, Decimal
+from decimal import MAX_EMAX, MIN_EMIN, ROUND_HALF_EVEN, Context, Decimal
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +22,7 @@ __all__ = ["build_batch", "schema", "stream", "to_pandas", "to_polars", "write_p
 
 _EPOCH = dt.date(1970, 1, 1).toordinal()
 _EPOCH_DT = dt.datetime(1970, 1, 1)
-_ROUND = Context(prec=80, rounding=ROUND_HALF_EVEN)
+_ROUND = Context(prec=80, rounding=ROUND_HALF_EVEN, Emin=MIN_EMIN, Emax=MAX_EMAX)
 
 
 def _na() -> Any:
@@ -47,18 +47,24 @@ def schema(columns: Sequence[Column]) -> Any:
     return na.struct({c.name: _type(na, c) for c in columns})
 
 
-def _unscaled(v: Decimal, scale: int) -> int | None:
-    """The exact unscaled integer of ``v`` at ``scale``, or ``None`` if it needs more decimals."""
+def _unscaled(v: Decimal, scale: int, precision: int) -> int | None:
+    """The exact unscaled integer of ``v`` at ``scale``, or ``None`` if it does not fit.
+
+    ``None`` means that ``v`` needs more decimals than ``scale`` or more than ``precision`` digits.
+    Both are checked before any integer is built, so a short value with a huge exponent
+    (``0E-1000000000000``) or a long coefficient costs nothing.
+    """
     sign, digits, exp = v.as_tuple()
     assert isinstance(exp, int)
-    n = int("".join(map(str, digits)) or "0")
-    shift = exp + scale
-    if shift >= 0:
-        n *= 10**shift
-    else:
-        n, rem = divmod(n, int(10 ** (-shift)))
-        if rem:
-            return None
+    end = len(digits)
+    while end and digits[end - 1] == 0:  # 1.500 and 15E-1 are the same number
+        end -= 1
+    if not end:
+        return 0
+    shift = exp + len(digits) - end + scale
+    if shift < 0 or end + shift > precision:
+        return None
+    n: int = int("".join(map(str, digits[:end]))) * 10**shift
     return -n if sign else n
 
 
@@ -77,7 +83,7 @@ def _decimal_column(
     na: Any, table: str, col: Column, values: list[Decimal | None], policy: OnInexact
 ) -> Any:
     precision, scale = NUMBER
-    limit = 10**precision
+    quantum = Decimal(1).scaleb(-scale, context=_ROUND)
     out = bytearray(16 * len(values))
     for i, v in enumerate(values):
         if v is None:
@@ -85,10 +91,11 @@ def _decimal_column(
         where = f"table {table!r}, column {col.name!r}, row {i}"
         if not v.is_finite():
             raise ValueError(f"{where}: {v} is not a finite number")
-        n = _unscaled(v, scale)
-        if n is None and policy == "round":
-            n = _unscaled(v.quantize(Decimal(1).scaleb(-scale), context=_ROUND), scale)
-        if n is None or not -limit < n < limit:
+        n = _unscaled(v, scale, precision)
+        if n is None and policy == "round" and v.adjusted() < precision - scale:
+            # only values whose integer part fits are worth rounding (and fit _ROUND's precision)
+            n = _unscaled(v.quantize(quantum, context=_ROUND), scale, precision)
+        if n is None:
             if policy == "null":
                 values[i] = None
                 continue

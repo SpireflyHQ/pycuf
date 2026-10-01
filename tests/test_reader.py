@@ -162,6 +162,21 @@ def test_structure_findings() -> None:
     assert finding.path == "/CUF/BEGROTING[1]/BEGROTINGSREGEL[1]@HOEVEELHEID"
 
 
+@pytest.mark.parametrize("text", ["1e1000000", "1e-1000100", "1e999999999999999999999999"])
+def test_numbers_out_of_range_become_findings(text: str) -> None:
+    xml = f"""<CUF AANMAAKDATUMTIJD="2026-01-01T00:00:00">
+      <PROJECTGEGEVENS CUF_VERSIE="4.003" AANMAAKDATUM="2026-01-01" VALUTA="EUR"/>
+      <BEGROTING><BEGROTINGSREGEL BTW="21" HOEVEELHEID="{text}" MATERIAALPRIJS="1"/></BEGROTING>
+    </CUF>""".encode()
+    cuf = pycuf.read(xml)
+    assert cuf.lines[0].quantity is None and cuf.lines[0].raw is not None
+    assert cuf.lines[0].raw.get("HOEVEELHEID") == text
+    finding = next(f for f in cuf.findings if f.code == "CUF3018")
+    assert "outside the supported range" in finding.message and finding.value == text
+    report = pycuf.validate(xml)
+    assert not report.ok and report.counts["CUF3018"] == 1
+
+
 def test_legacy_sort_attributes() -> None:
     xml = b"""<CUF AANMAAKDATUMTIJD="2001-01-01T00:00:00">
       <PROJECTGEGEVENS CUF_VERSIE="4.000" AANMAAKDATUM="2001-01-01" VALUTA="NLG"/>

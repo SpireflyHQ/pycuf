@@ -32,6 +32,8 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Final, Literal, Self, TypedDict, Unpack, get_args
 
+from ._numeric import context
+
 __all__ = [
     "DEFAULT",
     "ERP",
@@ -90,6 +92,10 @@ def _decimal(field: str, value: object) -> Decimal:
     if not result.is_finite() or result < 0:
         raise ValueError(f"Policy.{field} must be a finite number >= 0, got {value!r}")
     return result
+
+
+_COMPARE_PRECISION = 80
+"""Digits for comparing stated with computed values (inputs may carry more digits than results)."""
 
 
 class _PolicyChanges(TypedDict, total=False):
@@ -168,10 +174,17 @@ class Policy:
         """Whether a stated value agrees with a computed one under this policy's tolerances.
 
         ``computed`` is first rounded to the precision of ``stated`` with :attr:`rounding`.
+        The result does not depend on your decimal context; non-finite values never agree.
         """
-        with decimal.localcontext(prec=80):
-            exponent = stated.as_tuple().exponent
-            if isinstance(exponent, int) and exponent < 0:
+        if not (stated.is_finite() and computed.is_finite()):
+            return False
+        exponent = stated.as_tuple().exponent
+        assert isinstance(exponent, int)
+        with context() as ctx:
+            ctx.prec = _COMPARE_PRECISION
+            if exponent < 0 and computed:  # rounding never changes a zero
+                # quantize fails unless every digit of its result fits the precision
+                ctx.prec = max(ctx.prec, computed.adjusted() - exponent + 2)
                 computed = computed.quantize(Decimal(1).scaleb(exponent), rounding=self.rounding)
             diff = abs(stated - computed)
             return diff <= max(self.rel_tol * max(abs(stated), abs(computed)), self.abs_tol)

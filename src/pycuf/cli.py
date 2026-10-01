@@ -14,6 +14,7 @@ from typing import Annotated, Any
 import typer
 
 from . import __version__
+from ._numeric import context, in_context
 from .errors import PycufError
 from .findings import CODES, Severity
 from .models import Bundle, Costs, StatedTotals
@@ -89,11 +90,21 @@ def _lenient(strict: bool) -> tuple[str, ...]:
 
 
 def _num(value: Decimal | None) -> str | None:
-    return None if value is None else format(value.normalize(), "f")
+    if value is None:
+        return None
+    with context() as ctx:
+        ctx.prec = max(len(value.as_tuple().digits), 1)  # drop trailing zeros, never round
+        return format(value.normalize(), "f")
 
 
+@in_context
 def _money(value: Decimal) -> str:
-    return f"{value.quantize(Decimal('0.01')):,.2f}"
+    return f"{value:,.2f}"
+
+
+@in_context
+def _hours(value: Decimal) -> str:
+    return f"{value:.2f}"
 
 
 @app.callback()
@@ -278,11 +289,12 @@ def totals(
         f"{'BEGROTING':<46} {_money(e.total):>14} {_money(e.labour):>12} "
         f"{_money(e.material):>12} {_money(e.subcontracting):>12}{mark}"
     )
-    typer.echo(f"{'hours':<46} {e.hours.quantize(Decimal('0.01')):>14}")
+    typer.echo(f"{'hours':<46} {_hours(e.hours):>14}")
     if cuf.tail is not None and cuf.tail.contract_sum is not None:
         typer.echo(f"{'contract sum (stated, excl. VAT)':<46} {_money(cuf.tail.contract_sum):>14}")
 
 
+@in_context
 def _mark(stated: StatedTotals, computed: Costs) -> str:
     """Mark a difference between the stated and computed total of the cost types stated."""
     names = [n for n, v in stated.items() if v is not None and n != "hours"]

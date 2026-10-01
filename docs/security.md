@@ -16,6 +16,7 @@ privately, never in a public issue.
 | External entities (XXE): reading local files, server-side requests | refused with the DOCTYPE; Expat never opens files or network connections; parameter-entity parsing is disabled |
 | Deeply nested elements | `max_depth` (default 64; AFAS documents imports of up to 15 bundle levels) |
 | Huge attribute values | `max_attribute_size` (default 1 Mi characters) |
+| Huge or tiny numbers (`0e-1000000000000` is 17 characters, but a trillion digits in plain notation) | numbers outside the [range pycuf reads](guide/reading.md#numbers) are `CUF3018` and `None`; computations run in pycuf's own decimal context; Arrow export checks digits before building integers; CSV and JSONL refuse a computed number longer than 2,000 characters |
 | Huge files | `max_size` (default 256 MiB; real CUF files are rarely larger than a few MB) |
 | Millions of findings | `max_findings_per_code` and `max_findings` |
 | Silent data corruption | no parser "recover" mode; malformed XML is an error with a position; repairs are opt-in and reported |

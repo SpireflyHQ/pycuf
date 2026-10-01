@@ -13,7 +13,11 @@ totals.resource(resource_line)  # a resource line's costs
 `Costs` holds labour `hours` plus the five cost types of CUF-XML: `labour` (loon), `material`
 (materiaal), `equipment` (materieel), `subcontracting` (onderaanneming) and `other` (overig).
 `total` is the sum of the five amounts. All arithmetic is exact `Decimal` arithmetic at 60
-significant digits, whatever your own decimal context is.
+significant digits in pycuf's own decimal context: your context's precision, rounding, exponent
+limits and traps change nothing, also when you read `total`, `extended()` or a table inside it.
+Real estimates need fewer than 30 digits; a result that would need more than 60 (only absurd
+inputs produce one) is rounded half-even to 60. Numbers in a file are limited to the
+[range pycuf reads](reading.md#numbers), so no calculation can overflow or silently become 0.
 
 ## The formulas
 

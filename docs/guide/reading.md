@@ -47,6 +47,15 @@ Flat views (`cuf.bundles`, `cuf.lines`, `cuf.resource_lines`, `cuf.quantity_line
 node in document order; `node.seq` is its position. `Line.bundle_seq` and `Bundle.parent_seq`
 point to the enclosing bundle.
 
+### Numbers
+
+CUF-XML numbers are XDR `number`s: digits with an optional sign, decimal point and exponent
+(`-123.456E+10`), in the range of a double. pycuf reads zero and magnitudes from
+`2.2250738585072014E-308` to `1.7976931348623157E+308`, with at most 1,074 decimals (enough to
+write any double exactly). Anything else, such as `1e999` or `0e-1000000000000`, is an invalid
+value: `CUF3018` ("outside the supported range"), `None` in the model, the text in `raw`. A
+short attribute can therefore never make a calculation or an export enormous.
+
 ### Navigating the tree
 
 ```python

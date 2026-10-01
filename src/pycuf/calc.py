@@ -2,8 +2,8 @@
 
 The formulas are those of the CUF-XML 4.003 schema and its usage rules; wherever the two disagree
 or are silent, the :class:`~pycuf.policy.Policy` decides. All arithmetic is exact
-:class:`decimal.Decimal` arithmetic; nothing is rounded except when comparing a computed value
-with a stated one.
+:class:`decimal.Decimal` arithmetic in pycuf's own context of 60 significant digits, whatever the
+caller's context is; nothing is rounded except when comparing a computed value with a stated one.
 
 Estimate line (``BEGROTINGSREGEL``)::
 
@@ -27,13 +27,13 @@ says.
 
 from __future__ import annotations
 
-import decimal
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING, Literal
 
+from ._numeric import PRECISION, context
 from .findings import Finding, FindingCollector
 from .models import COST_FIELDS, Bundle, Costs, CostType, Line, ResourceLine, StatedTotals
 from .policy import Policy
@@ -41,7 +41,7 @@ from .policy import Policy
 if TYPE_CHECKING:
     from .reader import CufFile
 
-__all__ = ["Totals", "check_totals", "compute"]
+__all__ = ["PRECISION", "Totals", "check_totals", "compute"]
 
 _ZERO = Decimal(0)
 _ONE = Decimal(1)
@@ -208,14 +208,9 @@ _FIELD: Mapping[CostType, str] = {
 }
 
 
-PRECISION = 60
-"""Decimal precision (significant digits) of the computations; far beyond any real estimate, so
-results are exact."""
-
-
 def compute(cuf: CufFile, policy: Policy) -> Totals:
     """Compute the costs of every node of ``cuf`` under ``policy``."""
-    with decimal.localcontext(prec=PRECISION):
+    with context():
         return _compute(cuf, policy)
 
 
@@ -270,8 +265,12 @@ def _compute(cuf: CufFile, policy: Policy) -> Totals:
 
 # ---------------------------------------------------------------------------- checks
 def _fmt(value: Decimal) -> str:
-    """Plain notation without trailing zeros (``4404.820000`` → ``4404.82``)."""
-    return format(value.normalize(), "f")
+    """Plain notation without trailing zeros (``4404.820000`` → ``4404.82``).
+
+    Magnitudes no real estimate has are written in scientific notation, so a message stays short.
+    """
+    value = value.normalize()
+    return format(value, "f") if -PRECISION <= value.adjusted() < PRECISION else str(value)
 
 
 def _compare(
@@ -308,7 +307,7 @@ def _compare(
 
 def check_totals(cuf: CufFile, totals: Totals, findings: FindingCollector) -> None:
     """Check stated totals, resource lines and the contract sum against ``totals``."""
-    with decimal.localcontext(prec=PRECISION):
+    with context():
         _check_totals(cuf, totals, findings)
 
 

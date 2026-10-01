@@ -74,6 +74,62 @@ def test_csv_and_jsonl_export(cuf: pycuf.CufFile, tmp_path: Path) -> None:
         cuf.export(tmp_path, tables=["nope"])
 
 
+def _doc(lines: str) -> bytes:
+    return (
+        '<CUF AANMAAKDATUMTIJD="2026-01-01T00:00:00">'
+        '<PROJECTGEGEVENS CUF_VERSIE="4.003" AANMAAKDATUM="2026-01-01" VALUTA="EUR"/>'
+        f"<BEGROTING>{lines}</BEGROTING></CUF>"
+    ).encode()
+
+
+def test_plain_numbers_are_exact_and_bounded(tmp_path: Path) -> None:
+    edge = "1.7976931348623157E+308"
+    cuf = pycuf.read(_doc(f'<BEGROTINGSREGEL BTW="21" HOEVEELHEID="1" MATERIAALPRIJS="{edge}"/>'))
+    (path,) = cuf.export(tmp_path / "edge", tables=["lines"])
+    with Path(path).open(encoding="utf-8") as fh:
+        price = next(csv.DictReader(fh))["material_price"]
+    assert len(price) == 309 and Decimal(price) == Decimal(edge)
+    lines = '<BEGROTINGSREGEL BTW="21" HOEVEELHEID="1E+300" MATERIAALPRIJS="1E+300"/>'
+    for _ in range(40):
+        lines = f'<BUNDELING DOORREKEN_HOEVEELHEID="1E+300">{lines}</BUNDELING>'
+    absurd = pycuf.read(_doc(lines))  # multipliers make 1E+12000
+    for fmt in ("csv", "jsonl"):
+        with pytest.raises(
+            ValueError, match=r"'lines', column 'applied_multiplier', row 0: 1E\+12000"
+        ):
+            absurd.export(tmp_path / fmt, format=fmt, tables=["lines"])  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("0E-1000000000000", 0),
+        ("0E+1000000000000", 0),
+        ("1.500", 1_500_000_000_000_000),
+        ("-15E-1", -1_500_000_000_000_000),
+        ("9999999999999.999999999999999", 10**28 - 1),
+        ("10000000000000", None),
+        ("1E-16", None),
+        ("1E+1000000000000", None),
+        ("1E-1000000000000", None),
+        pytest.param("9" * 5000, None, id="long"),
+    ],
+)
+def test_arrow_unscaled_checks_digits_first(value: str, expected: int | None) -> None:
+    from pycuf._arrow import _unscaled
+
+    assert _unscaled(Decimal(value), 15, 28) == expected
+
+
+@pytest.mark.extras
+def test_round_policy_names_values_too_large_to_round() -> None:
+    pytest.importorskip("nanoarrow")
+    quantity = "1" * 100 + "." + "5" * 20  # inexact and far too large; rounding raised bare
+    cuf = pycuf.read(_doc(f'<BEGROTINGSREGEL BTW="21" HOEVEELHEID="{quantity}"/>'))
+    with pytest.raises(ValueError, match="table 'lines', column 'quantity', row 0"):
+        cuf.tables["lines"].to_arrow(on_inexact="round")
+
+
 @pytest.mark.extras
 def test_arrow_consumers(cuf: pycuf.CufFile) -> None:
     pa = pytest.importorskip("pyarrow")

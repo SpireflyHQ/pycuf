@@ -162,11 +162,74 @@ def test_contract_sum(estimate: cufgen.Estimate) -> None:
     assert "CUF5005" in {f.code for f in pycuf.read(data).validate().findings}
 
 
-def test_exact_regardless_of_caller_context(estimate: cufgen.Estimate) -> None:
-    cuf = pycuf.read(cufgen.write(estimate))
-    with decimal.localcontext(prec=6):
-        low = cuf.totals(policy=Policy(abs_tol=Decimal("0.02"))).estimate
-    assert low.total == sum(estimate.expected()[k] for k in COST_FIELDS[1:])
+HOSTILE_CONTEXTS = [
+    pytest.param(decimal.Context(prec=6), id="low-precision"),
+    pytest.param(decimal.Context(Emax=3, Emin=-3), id="small-exponents"),
+    pytest.param(decimal.Context(prec=10, rounding=decimal.ROUND_FLOOR), id="rounding"),
+    pytest.param(
+        decimal.Context(traps=[decimal.Inexact, decimal.Rounded, decimal.InvalidOperation]),
+        id="strict-traps",
+    ),
+    pytest.param(decimal.Context(traps=[]), id="no-traps"),
+]
+
+
+@pytest.mark.parametrize("hostile", HOSTILE_CONTEXTS)
+def test_results_ignore_the_callers_context(
+    estimate: cufgen.Estimate, hostile: decimal.Context
+) -> None:
+    data = cufgen.write(estimate)
+    cuf = pycuf.read(data)
+    totals = cuf.totals()
+    line, bundle = cuf.lines[0], cuf.bundles[0]
+    expected = (totals.estimate.total, totals.extended(line), totals.extended(bundle).total)
+    rows = {name: list(cuf.tables[name].rows()) for name in ("project", "bundles", "lines")}
+    report = cuf.validate().to_dict()
+    with decimal.localcontext(hostile):
+        # cached and freshly computed totals, derived values, tables and checks, all inside
+        assert (totals.estimate.total, totals.extended(line), totals.extended(bundle).total) == (
+            expected
+        )
+        assert {name: list(cuf.tables[name].rows()) for name in rows} == rows
+        assert cuf.validate().to_dict() == report
+        fresh = pycuf.read(data)
+        assert fresh.totals().estimate == totals.estimate
+        assert fresh.totals().estimate.total == expected[0]
+        assert pycuf.validate(data).to_dict() == report
+    assert expected[0] == sum(estimate.expected()[k] for k in COST_FIELDS[1:])
+
+
+@pytest.mark.parametrize("hostile", HOSTILE_CONTEXTS)
+def test_rounding_to_stated_precision_ignores_the_callers_context(
+    hostile: decimal.Context,
+) -> None:
+    line = '<BEGROTINGSREGEL BTW="21" HOEVEELHEID="10.5" MATERIAALPRIJS="20.5"/>'  # 215.25
+    data = xml(line, totals='MATERIAALKOSTEN="215.3"')
+    with decimal.localcontext(hostile):
+        report = pycuf.validate(data)
+    assert report.counts.get("CUF5002") is None
+
+
+def test_agrees_with_extreme_values() -> None:
+    policy = Policy()
+    assert not policy.agrees(Decimal("5.00"), Decimal("1E+600"))
+    assert policy.agrees(Decimal("0E+1000000000000"), Decimal("0.004"))
+    big = "1" + "0" * 300
+    assert policy.agrees(Decimal(big + ".00"), Decimal(big + ".004"))  # rounds 303 digits
+    with decimal.localcontext(decimal.Context(prec=2, traps=[decimal.Inexact])):
+        assert policy.agrees(Decimal("5.00"), Decimal("5.004"))
+        assert not policy.agrees(Decimal("5.00"), Decimal("5.02"))
+
+
+def test_absurd_magnitudes_stay_bounded() -> None:
+    inner = '<BEGROTINGSREGEL BTW="21" HOEVEELHEID="1E+300" MATERIAALPRIJS="1E+300"/>'
+    for _ in range(40):
+        inner = f'<BUNDELING DOORREKEN_HOEVEELHEID="1E+300">{inner}</BUNDELING>'
+    cuf = pycuf.read(xml(inner, totals='MATERIAALKOSTEN="5.00"'))
+    assert cuf.totals().estimate.material == Decimal("1E+12600")
+    report = cuf.validate()
+    assert "CUF5002" in report.counts
+    assert all(len(f.message) < 300 for f in report.findings)  # no 12,600-digit numbers
 
 
 def test_totals_cache_and_foreign_nodes(estimate: cufgen.Estimate) -> None:

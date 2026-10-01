@@ -42,7 +42,9 @@ All library code lives in `src/pycuf/`. Modules starting with `_` are internal.
 - `spec.py`: the CUF-XML 4.003 catalogue: every element and attribute with type, cardinality,
   English field name and description. It drives the checks, the model mapping and the glossary.
 - `_build.py`: builds the model from raw elements, with the structure, value and sort-code checks.
-- `values.py`: strict parsers for numbers, dates and booleans (plus the opt-in lenient forms).
+- `values.py`: strict parsers for numbers, dates and booleans (plus the opt-in lenient forms),
+  and the range of numbers pycuf reads.
+- `_numeric.py`: the decimal context every computation runs in, whatever the caller's context is.
 - `models.py`: the typed, English-named data model (`Bundle`, `Line`, `ResourceLine`, `Costs`, …).
 - `reader.py`: `pycuf.read()` and `CufFile` (navigation, sort-code inheritance, entry points for
   totals, validation and tables).
@@ -84,8 +86,11 @@ These hold everywhere; a change that breaks one needs a very good reason.
   `calc.py`, never in the model, and stated totals are never overwritten by computed ones.
 - **Interpretations are explicit.** Every ambiguous calculation rule is a `Policy` field; results
   record the policy they used.
-- **Exact arithmetic.** Computations run in a local decimal context of 60 digits; Arrow export
-  converts decimals from their digits, independent of the caller's context.
+- **Exact arithmetic.** Every computation a caller can reach (totals, derived properties such as
+  `Costs.total`, comparisons, CLI formatting) runs in pycuf's own decimal context of 60 digits,
+  never the caller's. Numbers are bounded when parsed, so nothing overflows, underflows or
+  expands; Arrow export converts decimals from their digits and checks their size before
+  building integers.
 - **Hostile input is expected.** DOCTYPE and ENTITY declarations are refused, there is no parser
   "recover" mode, and size, depth and attribute length are limited.
 
