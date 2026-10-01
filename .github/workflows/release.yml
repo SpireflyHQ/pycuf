@@ -151,15 +151,20 @@ jobs:
           path: dist/
       - name: Release notes from CHANGELOG.md
         run: |
+          # A pre-release (X.Y.ZrcN, aN, bN, .devN) uses the section of the release it leads to.
           version="${GITHUB_REF_NAME#v}"
-          awk -v v="$version" '
-            $0 ~ "^## \\[" v "\\]" { found = 1; next }
-            found && /^## \[/ { exit }
-            found && /^\[[^]]+\]: / { next }
-            found { print }
-          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          base="$(printf '%s' "$version" | sed -E 's/(a|b|rc|\.dev)[0-9]+$//')"
+          for v in "$version" "$base"; do
+            awk -v v="$v" '
+              $0 ~ "^## \\[" v "\\]" { found = 1; next }
+              found && /^## \[/ { exit }
+              found && /^\[[^]]+\]: / { next }
+              found { print }
+            ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+            if grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then break; fi
+          done
           if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
-            echo "CHANGELOG.md has no section for $version" >&2
+            echo "CHANGELOG.md has no section for $version or $base" >&2
             exit 1
           fi
       - name: gh release create (draft, then publish)
