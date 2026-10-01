@@ -20,6 +20,8 @@ keywords = [
     "quantity surveying",
     "ketenstandaard",
     "xml",
+    "validation",
+    "cli",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
